@@ -13,23 +13,6 @@ export class DocumentsService {
   ) {}
 
   /**
-   * Chunk text into smaller pieces for embedding
-   */
-  private chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
-    const chunks: string[] = [];
-    let start = 0;
-
-    while (start < text.length) {
-      const end = Math.min(start + chunkSize, text.length);
-      const chunk = text.substring(start, end);
-      chunks.push(chunk);
-      start = end - overlap;
-    }
-
-    return chunks;
-  }
-
-  /**
    * Extract text from Word document
    */
   private async extractTextFromWord(buffer: Buffer): Promise<string> {
@@ -62,7 +45,8 @@ export class DocumentsService {
   }
 
   /**
-   * Process and store document with embeddings
+   * Upload document - ONLY save file, process embeddings later
+   * This prevents memory issues by not processing everything in one request
    */
   async uploadDocument(
     userId: string,
@@ -70,110 +54,253 @@ export class DocumentsService {
     type: DocumentType,
     file: Express.Multer.File,
   ) {
-    // Check file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    // Check file size (max 3MB)
+    const maxSize = 3 * 1024 * 1024; // 3MB
     if (file.size > maxSize) {
       throw new BadRequestException(
         `File size exceeds limit of ${maxSize / 1024 / 1024}MB. Please upload a smaller file.`,
       );
     }
 
+    // Extract text
     let textContent: string;
+    const fileBuffer = file.buffer;
 
-    // Extract text based on file type
-    if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      textContent = await this.extractTextFromWord(file.buffer);
-    } else if (
-      file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-      file.mimetype === 'application/vnd.ms-excel'
-    ) {
-      textContent = await this.extractTextFromExcel(file.buffer);
-    } else if (file.mimetype === 'text/plain') {
-      textContent = file.buffer.toString('utf-8');
-    } else {
-      throw new BadRequestException('Unsupported file type. Please upload Word, Excel, or text files.');
+    try {
+      if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        textContent = await this.extractTextFromWord(fileBuffer);
+      } else if (
+        file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.mimetype === 'application/vnd.ms-excel'
+      ) {
+        textContent = await this.extractTextFromExcel(fileBuffer);
+      } else if (file.mimetype === 'text/plain') {
+        textContent = fileBuffer.toString('utf-8');
+      } else {
+        throw new BadRequestException('Unsupported file type. Please upload Word, Excel, or text files.');
+      }
+    } finally {
+      // Clear file buffer
+      (file as any).buffer = null;
     }
 
     if (!textContent || textContent.trim().length === 0) {
       throw new BadRequestException('Document appears to be empty');
     }
 
-    // Limit text content to prevent memory issues (max 500KB of text)
-    const maxTextLength = 500 * 1024; // 500KB
+    // Limit text content (200KB)
+    const maxTextLength = 200 * 1024;
     if (textContent.length > maxTextLength) {
       textContent = textContent.substring(0, maxTextLength);
     }
 
-    // Chunk the document with larger chunks to reduce total number
-    const chunks = this.chunkText(textContent, 2000, 300); // Larger chunks: 2000 chars, 300 overlap
+    // OPTION 1: Save document WITHOUT embeddings first (fast, no memory issue)
+    // Process embeddings in background or on-demand
+    const document = await this.prisma.document.create({
+      data: {
+        subjectId,
+        type,
+        content: textContent, // Save full content
+        embedding: null, // Embedding will be generated later
+        chunkIndex: 0,
+        originalFileName: file.originalname,
+        uploadedBy: userId,
+      },
+    });
 
-    // Process chunks in batches to avoid memory issues
-    const batchSize = 3; // Process 3 chunks at a time
-    const documents = [];
-    let firstDocumentId: string | null = null;
-
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
-      
-      // Process batch in parallel but limit concurrency
-      const batchPromises = batch.map(async (chunk, batchIndex) => {
-        const chunkIndex = i + batchIndex;
-        try {
-          // Generate embedding
-          const embedding = await this.aiService.generateEmbedding(chunk);
-
-          // Store document
-          const document = await this.prisma.document.create({
-            data: {
-              subjectId,
-              type,
-              content: chunk,
-              embedding: embedding,
-              chunkIndex: chunkIndex,
-              originalFileName: file.originalname,
-              uploadedBy: userId,
-            },
-          });
-
-          if (chunkIndex === 0) {
-            firstDocumentId = document.id;
-          }
-
-          return document;
-        } catch (error) {
-          console.error(`Error processing chunk ${chunkIndex}:`, error);
-          // Continue with other chunks even if one fails
-          return null;
-        }
-      });
-
-      const batchResults = await Promise.all(batchPromises);
-      documents.push(...batchResults.filter((doc) => doc !== null));
-
-      // Small delay between batches to avoid overwhelming the system
-      if (i + batchSize < chunks.length) {
-        await new Promise((resolve) => setTimeout(resolve, 500)); // 500ms delay
-      }
-    }
+    // OPTION 2: Process embeddings in background (async, non-blocking)
+    // This prevents blocking the request and memory issues
+    this.processEmbeddingsAsync(document.id, textContent).catch((error) => {
+      console.error(`Failed to process embeddings for document ${document.id}:`, error);
+      // Don't throw - document is already saved
+    });
 
     return {
-      message: 'Document uploaded and processed successfully',
-      chunksCount: documents.length,
-      documentId: firstDocumentId,
+      message: 'Document uploaded successfully. Embeddings are being processed in the background.',
+      documentId: document.id,
+      status: 'processing',
     };
   }
 
   /**
-   * Get documents for a subject
+   * Process embeddings asynchronously - this runs in background
+   * This prevents memory issues by processing outside the request handler
+   */
+  private async processEmbeddingsAsync(documentId: string, textContent: string): Promise<void> {
+    // Chunk the text
+    const chunkSize = 3000;
+    const overlap = 400;
+    const maxChunks = 30;
+
+    let processedChunks = 0;
+    let start = 0;
+    const chunks: Array<{ index: number; content: string }> = [];
+
+    // First, create all chunks (this is fast, just string operations)
+    while (start < textContent.length && processedChunks < maxChunks) {
+      const end = Math.min(start + chunkSize, textContent.length);
+      const chunk = textContent.substring(start, end);
+
+      if (chunk.trim().length > 0) {
+        chunks.push({ index: processedChunks, content: chunk });
+        processedChunks++;
+      }
+
+      start = end - overlap;
+      if (start >= end) break;
+    }
+
+    // Process embeddings ONE AT A TIME to minimize memory usage
+    for (const chunkData of chunks) {
+      try {
+        console.log(`Processing embedding for chunk ${chunkData.index + 1}/${chunks.length}...`);
+
+        // Generate embedding
+        const embedding = await this.aiService.generateEmbedding(chunkData.content);
+
+        // Update or create document chunk
+        if (chunkData.index === 0) {
+          // Update main document with first chunk's embedding
+          await this.prisma.document.update({
+            where: { id: documentId },
+            data: { embedding: embedding },
+          });
+        } else {
+          // Create additional chunks as separate documents
+          await this.prisma.document.create({
+            data: {
+              subjectId: (await this.prisma.document.findUnique({ where: { id: documentId } }))?.subjectId || '',
+              type: (await this.prisma.document.findUnique({ where: { id: documentId } }))?.type || DocumentType.TEXTBOOK,
+              content: chunkData.content,
+              embedding: embedding,
+              chunkIndex: chunkData.index,
+              originalFileName: (await this.prisma.document.findUnique({ where: { id: documentId } }))?.originalFileName || '',
+              uploadedBy: (await this.prisma.document.findUnique({ where: { id: documentId } }))?.uploadedBy || '',
+            },
+          });
+        }
+
+        // Delay between chunks to allow GC
+        if (chunkData.index < chunks.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      } catch (error) {
+        console.error(`Error processing chunk ${chunkData.index}:`, error);
+      }
+    }
+
+    console.log(`Completed processing embeddings for document ${documentId}`);
+  }
+
+  /**
+   * Upload multiple documents (folder upload)
+   */
+  async uploadMultipleDocuments(
+    userId: string,
+    subjectId: string,
+    type: DocumentType,
+    files: Express.Multer.File[],
+  ) {
+    const results = {
+      successCount: 0,
+      failedCount: 0,
+      documents: [] as any[],
+    };
+
+    // Process files sequentially to avoid memory issues
+    for (const file of files) {
+      try {
+        const result = await this.uploadDocument(userId, subjectId, type, file);
+        results.successCount++;
+        results.documents.push({
+          fileName: file.originalname,
+          documentId: result.documentId,
+          status: 'success',
+        });
+      } catch (error) {
+        results.failedCount++;
+        results.documents.push({
+          fileName: file.originalname,
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        console.error(`Failed to upload ${file.originalname}:`, error);
+      }
+
+      // Small delay between files
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    return results;
+  }
+
+  /**
+   * Get documents for a subject (folder view - groups by file)
+   * Returns grouped structure showing all files in the folder
    */
   async getDocuments(subjectId: string, type?: DocumentType) {
-    return this.prisma.document.findMany({
+    const documents = await this.prisma.document.findMany({
+      where: {
+        subjectId,
+        ...(type && { type }),
+      },
+      orderBy: [
+        { originalFileName: 'asc' },
+        { chunkIndex: 'asc' },
+      ],
+      select: {
+        id: true,
+        type: true,
+        originalFileName: true,
+        chunkIndex: true,
+        createdAt: true,
+        embedding: true, // To check processing status
+      },
+    });
+
+    // Group by filename to show folder structure
+    const grouped = documents.reduce((acc: any, doc: any) => {
+      const fileName = doc.originalFileName || 'Unknown';
+      if (!acc[fileName]) {
+        acc[fileName] = {
+          fileName,
+          type: doc.type,
+          chunks: [],
+          createdAt: doc.createdAt,
+          isProcessed: false,
+        };
+      }
+      acc[fileName].chunks.push({
+        id: doc.id,
+        chunkIndex: doc.chunkIndex,
+        isProcessed: doc.embedding !== null,
+      });
+      // Update isProcessed if any chunk is processed
+      if (doc.embedding !== null) {
+        acc[fileName].isProcessed = true;
+      }
+      return acc;
+    }, {});
+
+    return {
+      grouped: Object.values(grouped),
+      total: documents.length,
+    };
+  }
+
+  /**
+   * Get all documents for a subject/grade (including all chunks)
+   * Used for folder view and RAG search
+   */
+  async getDocumentsBySubject(subjectId: string, type?: DocumentType) {
+    const documents = await this.prisma.document.findMany({
       where: {
         subjectId,
         ...(type && { type }),
       },
       orderBy: {
-        createdAt: 'desc',
+        originalFileName: 'asc',
+        chunkIndex: 'asc',
       },
       select: {
         id: true,
@@ -183,6 +310,26 @@ export class DocumentsService {
         createdAt: true,
       },
     });
+
+    // Group by file name
+    const grouped = documents.reduce((acc: any, doc) => {
+      const fileName = doc.originalFileName || 'Unknown';
+      if (!acc[fileName]) {
+        acc[fileName] = {
+          fileName,
+          type: doc.type,
+          chunks: [],
+          createdAt: doc.createdAt,
+        };
+      }
+      acc[fileName].chunks.push({
+        id: doc.id,
+        chunkIndex: doc.chunkIndex,
+      });
+      return acc;
+    }, {});
+
+    return Object.values(grouped);
   }
 
   /**
@@ -214,4 +361,3 @@ export class DocumentsService {
     }));
   }
 }
-

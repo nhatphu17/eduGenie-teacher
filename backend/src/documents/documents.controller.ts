@@ -5,12 +5,13 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  UploadedFiles,
   Body,
   Query,
   Param,
   BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -29,11 +30,11 @@ export class DocumentsController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB limit
+        fileSize: 3 * 1024 * 1024, // 3MB limit to prevent memory issues
       },
     }),
   )
-  @ApiOperation({ summary: 'Upload a document (Word, Excel, or text file, max 10MB)' })
+  @ApiOperation({ summary: 'Upload a document (Word, Excel, or text file, max 3MB)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -92,8 +93,76 @@ export class DocumentsController {
     return this.documentsService.getDocuments(subjectId, type);
   }
 
+  @Post('upload-folder')
+  @UseInterceptors(
+    FilesInterceptor('files', 20, {
+      // Allow up to 20 files, max 3MB each
+      limits: {
+        fileSize: 3 * 1024 * 1024,
+      },
+    }),
+  )
+  @ApiOperation({ summary: 'Upload multiple files (folder) for a subject/grade' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+        type: {
+          type: 'string',
+          enum: Object.values(DocumentType),
+        },
+        subjectId: {
+          type: 'string',
+        },
+      },
+    },
+  })
+  async uploadFolder(
+    @CurrentUser() user: any,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() uploadDto: UploadDocumentDto,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files uploaded. Please select at least one file.');
+    }
+
+    if (!uploadDto.subjectId) {
+      throw new BadRequestException('Subject ID is required');
+    }
+
+    if (!uploadDto.type) {
+      throw new BadRequestException('Document type is required');
+    }
+
+    try {
+      const results = await this.documentsService.uploadMultipleDocuments(
+        user.id,
+        uploadDto.subjectId,
+        uploadDto.type,
+        files,
+      );
+      return {
+        message: `Successfully uploaded ${results.successCount} file(s). ${results.failedCount} file(s) failed.`,
+        successCount: results.successCount,
+        failedCount: results.failedCount,
+        documents: results.documents,
+      };
+    } catch (error) {
+      console.error('Upload folder error:', error);
+      throw error;
+    }
+  }
+
   @Get('search')
-  @ApiOperation({ summary: 'Search documents using RAG' })
+  @ApiOperation({ summary: 'Search documents using RAG - searches ALL documents in subject/grade folder' })
   async searchDocuments(
     @Query('query') query: string,
     @Query('subjectId') subjectId: string,
@@ -101,6 +170,15 @@ export class DocumentsController {
     @Query('limit') limit?: number,
   ) {
     return this.documentsService.searchDocuments(query, subjectId, grade, limit || 10);
+  }
+
+  @Get('by-subject')
+  @ApiOperation({ summary: 'Get all documents for a subject/grade (folder view)' })
+  async getDocumentsBySubject(
+    @Query('subjectId') subjectId: string,
+    @Query('type') type?: DocumentType,
+  ) {
+    return this.documentsService.getDocumentsBySubject(subjectId, type);
   }
 }
 

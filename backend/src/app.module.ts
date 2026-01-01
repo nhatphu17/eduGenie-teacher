@@ -11,6 +11,7 @@ import { ExamsModule } from './exams/exams.module';
 import { GradingModule } from './grading/grading.module';
 import { LessonPlansModule } from './lesson-plans/lesson-plans.module';
 import { ExportModule } from './export/export.module';
+import { SubjectsModule } from './subjects/subjects.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ExportModule } from './export/export.module';
     AuthModule,
     UsersModule,
     SubscriptionModule,
+    SubjectsModule,
     DocumentsModule,
     AiModule,
     QuestionsModule,

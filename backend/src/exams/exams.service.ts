@@ -19,9 +19,10 @@ export class ExamsService {
   async generateExam(userId: string, generateDto: GenerateExamDto) {
     const { subjectId, grade, duration, difficultyDistribution, questionTypes, title, description } = generateDto;
 
-    // 1. Search for relevant documents
+    // 1. Search for relevant documents from ALL files in the subject/grade folder
     const searchQuery = `Đề thi môn học lớp ${grade}, phân bố độ khó: Nhận biết ${difficultyDistribution.NB}, Thông hiểu ${difficultyDistribution.TH}, Vận dụng ${difficultyDistribution.VD}`;
-    const relevantChunks = await this.documentsService.searchDocuments(searchQuery, subjectId, grade, 15);
+    // Search in ALL documents in the folder (increased limit to get more context)
+    const relevantChunks = await this.documentsService.searchDocuments(searchQuery, subjectId, grade, 30);
 
     if (relevantChunks.length === 0) {
       throw new BadRequestException(

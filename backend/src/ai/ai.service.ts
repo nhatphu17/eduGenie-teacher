@@ -55,18 +55,30 @@ export class AiService {
 
   /**
    * Retrieve relevant document chunks using vector similarity
+   * Searches ALL documents in the subject/grade folder
    */
   async retrieveRelevantChunks(
     queryEmbedding: number[],
     subjectId: string,
     grade: number,
-    limit: number = 10,
+    limit: number = 20, // Increased to search more documents
   ) {
-    // Get all documents for the subject and grade
+    // Get subject to verify grade
+    const subject = await this.prisma.subject.findUnique({
+      where: { id: subjectId },
+    });
+
+    if (!subject) {
+      return [];
+    }
+
+    // Get ALL documents for the subject (all files in the folder)
+    // Note: Documents are linked to subject, and subject has grade
+    // So all documents in this subjectId belong to the same grade
     const documents = await this.prisma.document.findMany({
       where: {
         subjectId,
-        // Note: We'd need to add grade to Document model or filter differently
+        embedding: { not: null }, // Only get documents with embeddings
       },
     });
 
