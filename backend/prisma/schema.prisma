@@ -57,11 +57,11 @@ model User {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
-  documents         Document[]
-  questions         Question[]
-  exams             Exam[]
-  lessonPlans       LessonPlan[]
-  submissions       StudentSubmission[]
+  uploadedDocuments Document[]  @relation("DocumentUploader")
+  createdQuestions  Question[]  @relation("QuestionCreator")
+  createdExams      Exam[]      @relation("ExamCreator")
+  createdLessonPlans LessonPlan[] @relation("LessonPlanCreator")
+  gradedSubmissions StudentSubmission[] @relation("SubmissionGrader")
   usageLogs         AIUsageLog[]
 
   @@index([email])
@@ -108,6 +108,7 @@ model Document {
   chunkIndex      Int?         // For chunked documents
   originalFileName String?
   uploadedBy      String?      // User ID
+  uploader        User?        @relation("DocumentUploader", fields: [uploadedBy], references: [id])
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -132,6 +133,7 @@ model Question {
   sourceDocumentId  String?
   sourceDocument    Document?    @relation(fields: [sourceDocumentId], references: [id])
   createdBy         String?      // User ID
+  creator           User?        @relation("QuestionCreator", fields: [createdBy], references: [id])
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
@@ -152,6 +154,7 @@ model Exam {
   title       String?
   description String?
   createdBy   String?  // User ID
+  creator     User?    @relation(fields: [createdBy], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -186,6 +189,7 @@ model StudentSubmission {
   score     Float?
   feedback  String?  @db.Text
   gradedBy  String?  // User ID
+  grader    User?    @relation("SubmissionGrader", fields: [gradedBy], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -204,6 +208,7 @@ model LessonPlan {
   assessment  Json     // Assessment criteria
   content     String?  @db.Text  // Full lesson plan content
   createdBy   String?  // User ID
+  creator     User?    @relation("LessonPlanCreator", fields: [createdBy], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

@@ -1,4 +1,4 @@
-import { PrismaClient, SubscriptionPlanName } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -7,10 +7,10 @@ async function main() {
 
   // Create subscription plans
   const freePlan = await prisma.subscriptionPlan.upsert({
-    where: { name: SubscriptionPlanName.FREE },
+    where: { name: 'FREE' },
     update: {},
     create: {
-      name: SubscriptionPlanName.FREE,
+      name: 'FREE',
       dailyQuota: 5,
       monthlyQuota: 50,
       price: 0,
@@ -18,10 +18,10 @@ async function main() {
   });
 
   const proPlan = await prisma.subscriptionPlan.upsert({
-    where: { name: SubscriptionPlanName.PRO },
+    where: { name: 'PRO' },
     update: {},
     create: {
-      name: SubscriptionPlanName.PRO,
+      name: 'PRO',
       dailyQuota: 50,
       monthlyQuota: 1000,
       price: 199000, // VND per month
