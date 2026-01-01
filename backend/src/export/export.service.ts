@@ -204,11 +204,11 @@ export class ExportService {
     exam.questions.forEach((eq, index) => {
       const question = eq.question;
       questionsData.push([
-        index + 1,
+        String(index + 1),
         question.content,
         question.type,
         question.difficulty,
-        eq.points,
+        String(eq.points),
         question.correctAnswer,
       ]);
     });

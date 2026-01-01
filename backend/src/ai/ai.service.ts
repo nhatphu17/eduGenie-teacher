@@ -153,7 +153,7 @@ Remember: ONLY use information from the source materials above. If information i
       const tokensUsed = response.usage?.total_tokens || 0;
 
       // 5. Log usage and increment quota
-      await this.prisma.aiUsageLog.create({
+      await this.prisma.aIUsageLog.create({
         data: {
           userId,
           actionType,

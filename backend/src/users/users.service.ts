@@ -8,15 +8,20 @@ export class UsersService {
   async findOne(id: string) {
     return this.prisma.user.findUnique({
       where: { id },
-      include: {
-        subscriptionPlan: true,
-      },
       select: {
         id: true,
         email: true,
         name: true,
         role: true,
-        subscriptionPlan: true,
+        subscriptionPlan: {
+          select: {
+            id: true,
+            name: true,
+            dailyQuota: true,
+            monthlyQuota: true,
+            price: true,
+          },
+        },
         usageCountDaily: true,
         usageCountMonthly: true,
         createdAt: true,
