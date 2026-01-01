@@ -1,0 +1,226 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  TEACHER
+  ADMIN
+}
+
+enum SubscriptionPlanName {
+  FREE
+  PRO
+}
+
+enum DocumentType {
+  TEXTBOOK
+  TEACHER_MATERIAL
+}
+
+enum Difficulty {
+  NB  // Nhận biết
+  TH  // Thông hiểu
+  VD  // Vận dụng
+}
+
+enum QuestionType {
+  MCQ
+  ESSAY
+}
+
+enum ActionType {
+  EXAM_GENERATION
+  LESSON_PLAN_GENERATION
+  QUESTION_GENERATION
+  GRADING
+}
+
+model User {
+  id                String            @id @default(cuid())
+  name              String
+  email             String            @unique
+  password          String
+  role              UserRole          @default(TEACHER)
+  subscriptionPlanId String
+  subscriptionPlan  SubscriptionPlan  @relation(fields: [subscriptionPlanId], references: [id])
+  usageCountDaily   Int               @default(0)
+  usageCountMonthly Int               @default(0)
+  lastUsageReset    DateTime?         @default(now())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  documents         Document[]
+  questions         Question[]
+  exams             Exam[]
+  lessonPlans       LessonPlan[]
+  submissions       StudentSubmission[]
+  usageLogs         AIUsageLog[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model SubscriptionPlan {
+  id           String   @id @default(cuid())
+  name         SubscriptionPlanName @unique
+  dailyQuota   Int
+  monthlyQuota Int
+  price        Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users        User[]
+
+  @@map("subscription_plans")
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  name      String
+  grade     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents  Document[]
+  questions  Question[]
+  exams      Exam[]
+  lessonPlans LessonPlan[]
+
+  @@unique([name, grade])
+  @@map("subjects")
+}
+
+model Document {
+  id              String       @id @default(cuid())
+  subjectId       String
+  subject         Subject      @relation(fields: [subjectId], references: [id])
+  type            DocumentType
+  content         Text
+  embedding       Json?        // Vector embeddings stored as JSON
+  chunkIndex      Int?         // For chunked documents
+  originalFileName String?
+  uploadedBy      String?      // User ID
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  questions       Question[]
+
+  @@index([subjectId])
+  @@index([type])
+  @@map("documents")
+}
+
+model Question {
+  id                String       @id @default(cuid())
+  subjectId         String
+  subject           Subject      @relation(fields: [subjectId], references: [id])
+  grade             Int
+  difficulty        Difficulty
+  type              QuestionType
+  content           Text
+  options           Json?        // For MCQ: array of options
+  correctAnswer     String       // For MCQ: option index/letter, for Essay: rubric
+  explanation       Text?
+  sourceDocumentId  String?
+  sourceDocument    Document?    @relation(fields: [sourceDocumentId], references: [id])
+  createdBy         String?      // User ID
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  examQuestions     ExamQuestion[]
+
+  @@index([subjectId, grade])
+  @@index([difficulty])
+  @@index([type])
+  @@map("questions")
+}
+
+model Exam {
+  id          String   @id @default(cuid())
+  subjectId   String
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  grade       Int
+  duration    Int      // minutes
+  title       String?
+  description String?
+  createdBy   String?  // User ID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions   ExamQuestion[]
+  submissions StudentSubmission[]
+
+  @@index([subjectId, grade])
+  @@map("exams")
+}
+
+model ExamQuestion {
+  id         String   @id @default(cuid())
+  examId     String
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+  order      Int
+  points     Float    @default(1.0)
+  createdAt  DateTime @default(now())
+
+  @@unique([examId, questionId])
+  @@index([examId])
+  @@map("exam_questions")
+}
+
+model StudentSubmission {
+  id        String   @id @default(cuid())
+  examId    String
+  exam      Exam     @relation(fields: [examId], references: [id])
+  studentName String?
+  answers   Json     // { questionId: answer }
+  score     Float?
+  feedback  Text?
+  gradedBy  String?  // User ID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([examId])
+  @@map("student_submissions")
+}
+
+model LessonPlan {
+  id          String   @id @default(cuid())
+  subjectId   String
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  grade       Int
+  title       String
+  objectives  Json     // Array of objectives
+  activities  Json     // { teacher: [], student: [] }
+  assessment  Json     // Assessment criteria
+  content     Text?    // Full lesson plan content
+  createdBy   String?  // User ID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([subjectId, grade])
+  @@map("lesson_plans")
+}
+
+model AIUsageLog {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id])
+  actionType ActionType
+  tokenUsed  Int
+  createdAt  DateTime   @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
+}
+
