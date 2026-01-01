@@ -88,10 +88,12 @@ export class DocumentsService {
       throw new BadRequestException('Document appears to be empty');
     }
 
-    // Limit text content (200KB)
-    const maxTextLength = 200 * 1024;
+    // Limit text content to prevent issues (500KB max for LONGTEXT)
+    // But we'll chunk it anyway, so this is just a safety limit
+    const maxTextLength = 500 * 1024; // 500KB - LONGTEXT can handle up to 4GB
     if (textContent.length > maxTextLength) {
       textContent = textContent.substring(0, maxTextLength);
+      console.log(`Text content truncated to ${maxTextLength} characters`);
     }
 
     // OPTION 1: Save document WITHOUT embeddings first (fast, no memory issue)

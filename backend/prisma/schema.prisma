@@ -103,7 +103,7 @@ model Document {
   subjectId       String
   subject         Subject      @relation(fields: [subjectId], references: [id])
   type            DocumentType
-  content         String        @db.Text
+  content         String        @db.LongText
   embedding       Json?        // Vector embeddings stored as JSON
   chunkIndex      Int?         // For chunked documents
   originalFileName String?
@@ -126,10 +126,10 @@ model Question {
   grade             Int
   difficulty        Difficulty
   type              QuestionType
-  content           String        @db.Text
+  content           String        @db.LongText
   options           Json?        // For MCQ: array of options
   correctAnswer     String       // For MCQ: option index/letter, for Essay: rubric
-  explanation       String?      @db.Text
+  explanation       String?      @db.LongText
   sourceDocumentId  String?
   sourceDocument    Document?    @relation(fields: [sourceDocumentId], references: [id])
   createdBy         String?      // User ID
@@ -187,7 +187,7 @@ model StudentSubmission {
   studentName String?
   answers   Json     // { questionId: answer }
   score     Float?
-  feedback  String?  @db.Text
+  feedback  String?  @db.LongText
   gradedBy  String?  // User ID
   grader    User?    @relation("SubmissionGrader", fields: [gradedBy], references: [id])
   createdAt DateTime @default(now())
@@ -206,7 +206,7 @@ model LessonPlan {
   objectives  Json     // Array of objectives
   activities  Json     // { teacher: [], student: [] }
   assessment  Json     // Assessment criteria
-  content     String?  @db.Text  // Full lesson plan content
+  content     String?  @db.LongText  // Full lesson plan content
   createdBy   String?  // User ID
   creator     User?    @relation("LessonPlanCreator", fields: [createdBy], references: [id])
   createdAt   DateTime @default(now())
