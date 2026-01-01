@@ -42,24 +42,44 @@ export default function Documents() {
   const uploadMutation = useMutation({
     mutationFn: async (formData: FormData) => {
       const res = await axios.post(`${API_URL}/documents/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 300000, // 5 minutes timeout for large files
       });
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setFile(null);
       setSelectedSubject('');
-      alert('Tải lên tài liệu thành công!');
+      alert(`Tải lên tài liệu thành công! Đã xử lý ${data.chunksCount} chunks.`);
     },
     onError: (error: any) => {
-      alert(error.response?.data?.message || 'Tải lên thất bại');
+      console.error('Upload error:', error);
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Tải lên thất bại. Vui lòng kiểm tra file và thử lại.';
+      alert(errorMessage);
     },
   });
 
   const handleUpload = async () => {
-    if (!file || !selectedSubject) {
-      alert('Vui lòng chọn file và môn học');
+    if (!file) {
+      alert('Vui lòng chọn file');
+      return;
+    }
+
+    if (!selectedSubject) {
+      alert('Vui lòng chọn môn học');
+      return;
+    }
+
+    // Check file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      alert(`File quá lớn. Kích thước tối đa: ${maxSize / 1024 / 1024}MB`);
       return;
     }
 
@@ -71,6 +91,9 @@ export default function Documents() {
     setUploading(true);
     try {
       await uploadMutation.mutateAsync(formData);
+    } catch (error) {
+      // Error is already handled in onError
+      console.error('Upload failed:', error);
     } finally {
       setUploading(false);
     }

@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   Param,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -25,8 +26,14 @@ export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiOperation({ summary: 'Upload a document (Word, Excel, or text file)' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB limit
+      },
+    }),
+  )
+  @ApiOperation({ summary: 'Upload a document (Word, Excel, or text file, max 10MB)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -52,9 +59,28 @@ export class DocumentsController {
     @Body() uploadDto: UploadDocumentDto,
   ) {
     if (!file) {
-      throw new Error('No file uploaded');
+      throw new BadRequestException('No file uploaded. Please select a file.');
     }
-    return this.documentsService.uploadDocument(user.id, uploadDto.subjectId, uploadDto.type, file);
+
+    if (!uploadDto.subjectId) {
+      throw new BadRequestException('Subject ID is required');
+    }
+
+    if (!uploadDto.type) {
+      throw new BadRequestException('Document type is required');
+    }
+
+    try {
+      return await this.documentsService.uploadDocument(
+        user.id,
+        uploadDto.subjectId,
+        uploadDto.type,
+        file,
+      );
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
+    }
   }
 
   @Get()

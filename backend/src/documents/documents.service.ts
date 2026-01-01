@@ -70,6 +70,14 @@ export class DocumentsService {
     type: DocumentType,
     file: Express.Multer.File,
   ) {
+    // Check file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      throw new BadRequestException(
+        `File size exceeds limit of ${maxSize / 1024 / 1024}MB. Please upload a smaller file.`,
+      );
+    }
+
     let textContent: string;
 
     // Extract text based on file type
@@ -90,34 +98,68 @@ export class DocumentsService {
       throw new BadRequestException('Document appears to be empty');
     }
 
-    // Chunk the document
-    const chunks = this.chunkText(textContent);
+    // Limit text content to prevent memory issues (max 500KB of text)
+    const maxTextLength = 500 * 1024; // 500KB
+    if (textContent.length > maxTextLength) {
+      textContent = textContent.substring(0, maxTextLength);
+    }
 
-    // Store each chunk with its embedding
+    // Chunk the document with larger chunks to reduce total number
+    const chunks = this.chunkText(textContent, 2000, 300); // Larger chunks: 2000 chars, 300 overlap
+
+    // Process chunks in batches to avoid memory issues
+    const batchSize = 3; // Process 3 chunks at a time
     const documents = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const embedding = await this.aiService.generateEmbedding(chunk);
+    let firstDocumentId: string | null = null;
 
-      const document = await this.prisma.document.create({
-        data: {
-          subjectId,
-          type,
-          content: chunk,
-          embedding: embedding,
-          chunkIndex: i,
-          originalFileName: file.originalname,
-          uploadedBy: userId,
-        },
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batch = chunks.slice(i, i + batchSize);
+      
+      // Process batch in parallel but limit concurrency
+      const batchPromises = batch.map(async (chunk, batchIndex) => {
+        const chunkIndex = i + batchIndex;
+        try {
+          // Generate embedding
+          const embedding = await this.aiService.generateEmbedding(chunk);
+
+          // Store document
+          const document = await this.prisma.document.create({
+            data: {
+              subjectId,
+              type,
+              content: chunk,
+              embedding: embedding,
+              chunkIndex: chunkIndex,
+              originalFileName: file.originalname,
+              uploadedBy: userId,
+            },
+          });
+
+          if (chunkIndex === 0) {
+            firstDocumentId = document.id;
+          }
+
+          return document;
+        } catch (error) {
+          console.error(`Error processing chunk ${chunkIndex}:`, error);
+          // Continue with other chunks even if one fails
+          return null;
+        }
       });
 
-      documents.push(document);
+      const batchResults = await Promise.all(batchPromises);
+      documents.push(...batchResults.filter((doc) => doc !== null));
+
+      // Small delay between batches to avoid overwhelming the system
+      if (i + batchSize < chunks.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500)); // 500ms delay
+      }
     }
 
     return {
       message: 'Document uploaded and processed successfully',
       chunksCount: documents.length,
-      documentId: documents[0]?.id,
+      documentId: firstDocumentId,
     };
   }
 
