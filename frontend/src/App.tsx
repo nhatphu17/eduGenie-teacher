@@ -9,6 +9,7 @@ import ExamMixer from './pages/ExamMixer';
 import Grading from './pages/Grading';
 import LessonPlanGenerator from './pages/LessonPlanGenerator';
 import Subscription from './pages/Subscription';
+import Documents from './pages/Documents';
 import Layout from './components/Layout';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ function App() {
           }
         >
           <Route index element={<Dashboard />} />
+          <Route path="documents" element={<Documents />} />
           <Route path="questions" element={<QuestionBank />} />
           <Route path="exams/generate" element={<ExamGenerator />} />
           <Route path="exams/mix" element={<ExamMixer />} />

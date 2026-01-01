@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { BookOpen, FileText, ClipboardList, Shuffle, CheckSquare, GraduationCap, CreditCard, LogOut } from 'lucide-react';
+import { BookOpen, FileText, ClipboardList, Shuffle, CheckSquare, GraduationCap, CreditCard, LogOut, Upload } from 'lucide-react';
 
 export default function Layout() {
   const { user, logout } = useAuthStore();
@@ -8,6 +8,7 @@ export default function Layout() {
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: BookOpen },
+    { path: '/documents', label: 'Tài liệu', icon: Upload },
     { path: '/questions', label: 'Ngân hàng câu hỏi', icon: FileText },
     { path: '/exams/generate', label: 'Tạo đề thi', icon: ClipboardList },
     { path: '/exams/mix', label: 'Trộn đề', icon: Shuffle },
