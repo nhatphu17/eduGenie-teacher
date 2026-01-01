@@ -154,7 +154,7 @@ model Exam {
   title       String?
   description String?
   createdBy   String?  // User ID
-  creator     User?    @relation(fields: [createdBy], references: [id])
+  creator     User?    @relation("ExamCreator", fields: [createdBy], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
