@@ -244,32 +244,55 @@ export class DocumentsService {
       if (start >= end) break;
     }
 
+    // Get document info once
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      select: { subjectId: true, type: true, originalFileName: true, uploadedBy: true },
+    });
+
+    if (!document) {
+      this.logger.error(`Document ${documentId} not found`);
+      await this.prisma.document.update({
+        where: { id: documentId },
+        data: { status: ProcessingStatus.FAILED, errorMessage: 'Document not found' },
+      });
+      return;
+    }
+
+    this.logger.log(`📊 Processing ${chunks.length} chunks for document ${documentId}`);
+
     // Process embeddings ONE AT A TIME to minimize memory usage
+    let savedChunks = 0;
     for (const chunkData of chunks) {
       try {
-        console.log(`Processing embedding for chunk ${chunkData.index + 1}/${chunks.length}...`);
+        this.logger.log(`🔄 Processing embedding for chunk ${chunkData.index + 1}/${chunks.length}...`);
 
         // Generate embedding
         const embedding = await this.aiService.generateEmbedding(chunkData.content);
 
-        // Update or create document chunk
+        // Insert into chunks table (not documents table!)
+        await this.prisma.chunk.create({
+          data: {
+            documentId: documentId,
+            content: chunkData.content,
+            contentLength: chunkData.content.length,
+            tokenCount: Math.ceil(chunkData.content.length / 4), // Estimate tokens
+            embedding: embedding,
+            embeddingModel: 'text-embedding-3-large',
+            chunkIndex: chunkData.index,
+            chunkType: 'TEXT',
+          },
+        });
+
+        savedChunks++;
+
+        // Update main document with first chunk's embedding (for backward compatibility)
         if (chunkData.index === 0) {
-          // Update main document with first chunk's embedding
           await this.prisma.document.update({
             where: { id: documentId },
-            data: { embedding: embedding },
-          });
-        } else {
-          // Create additional chunks as separate documents
-          await this.prisma.document.create({
             data: {
-              subjectId: (await this.prisma.document.findUnique({ where: { id: documentId } }))?.subjectId || '',
-              type: (await this.prisma.document.findUnique({ where: { id: documentId } }))?.type || DocumentType.TEXTBOOK,
               content: chunkData.content,
               embedding: embedding,
-              chunkIndex: chunkData.index,
-              originalFileName: (await this.prisma.document.findUnique({ where: { id: documentId } }))?.originalFileName || '',
-              uploadedBy: (await this.prisma.document.findUnique({ where: { id: documentId } }))?.uploadedBy || '',
             },
           });
         }
@@ -279,11 +302,21 @@ export class DocumentsService {
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
       } catch (error) {
-        console.error(`Error processing chunk ${chunkData.index}:`, error);
+        this.logger.error(`❌ Error processing chunk ${chunkData.index}: ${error}`);
+        this.logger.error(`Error details: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
-    console.log(`Completed processing embeddings for document ${documentId}`);
+    // Update document status to COMPLETED
+    await this.prisma.document.update({
+      where: { id: documentId },
+      data: {
+        status: ProcessingStatus.COMPLETED,
+        processedAt: new Date(),
+      },
+    });
+
+    this.logger.log(`✅ Completed processing embeddings for document ${documentId}: ${savedChunks}/${chunks.length} chunks saved`);
   }
 
   /**
