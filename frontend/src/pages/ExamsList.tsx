@@ -6,11 +6,19 @@ import { Link } from 'react-router-dom';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export default function ExamsList() {
-  const { data: exams, isLoading } = useQuery({
+  const { data: exams, isLoading, error } = useQuery({
     queryKey: ['exams'],
     queryFn: async () => {
-      const res = await axios.get(`${API_URL}/exams`);
-      return res.data;
+      try {
+        // axios.defaults.headers.common['Authorization'] is already set by authStore
+        const res = await axios.get(`${API_URL}/exams`);
+        console.log('Exams API response:', res.data);
+        return res.data;
+      } catch (err: any) {
+        console.error('Error fetching exams:', err);
+        console.error('Error details:', err.response?.data);
+        throw err;
+      }
     },
   });
 
@@ -25,6 +33,14 @@ export default function ExamsList() {
           Tạo đề thi mới
         </Link>
       </div>
+
+      {error && (
+        <div className="card bg-red-50 border border-red-200 mb-6">
+          <p className="text-red-600">
+            Lỗi khi tải danh sách đề thi: {error instanceof Error ? error.message : 'Unknown error'}
+          </p>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-12">

@@ -19,11 +19,18 @@ export default function Dashboard() {
 
   const quickActions = [
     {
+      title: 'Danh sách đề thi',
+      description: 'Xem và quản lý các đề thi đã tạo',
+      icon: ClipboardList,
+      link: '/exams',
+      color: 'bg-blue-500',
+    },
+    {
       title: 'Tạo đề thi',
       description: 'Sử dụng AI để tạo đề thi từ tài liệu',
       icon: ClipboardList,
       link: '/exams/generate',
-      color: 'bg-blue-500',
+      color: 'bg-green-500',
     },
     {
       title: 'Ngân hàng câu hỏi',
