@@ -91,6 +91,7 @@ Yêu cầu:
     }`;
 
     // 4. Generate exam using AI with RAG
+    console.log(`🤖 Generating exam with ${relevantChunks.length} context chunks...`);
     const examData = await this.aiService.generateStructuredJSON(
       userId,
       ActionType.EXAM_GENERATION,
@@ -101,6 +102,9 @@ Yêu cầu:
       })),
       jsonSchema,
     );
+    
+    console.log(`✅ AI response received:`, JSON.stringify(examData, null, 2));
+    console.log(`📝 Questions in response:`, examData.questions?.length || 0);
 
     // 5. Get subject
     const subject = await this.prisma.subject.findUnique({
@@ -124,32 +128,63 @@ Yêu cầu:
     });
 
     // 7. Create questions and link to exam
-    for (const questionData of examData.questions || []) {
-      // First, try to find existing question or create new one
-      const question = await this.prisma.question.create({
-        data: {
-          subjectId,
-          grade,
-          difficulty: questionData.difficulty as Difficulty,
-          type: questionData.type as QuestionType,
-          content: questionData.content,
-          options: questionData.options ? (questionData.options as any) : null,
-          correctAnswer: questionData.correctAnswer,
-          explanation: questionData.explanation || '',
-          createdBy: userId,
-        },
-      });
-
-      // Link to exam
-      await this.prisma.examQuestion.create({
-        data: {
-          examId: exam.id,
-          questionId: question.id,
-          order: questionData.order || 1,
-          points: questionData.points || 1.0,
-        },
-      });
+    console.log(`📝 Exam data received:`, JSON.stringify(examData, null, 2));
+    console.log(`📝 Questions array:`, examData.questions);
+    console.log(`📝 Questions count:`, examData.questions?.length || 0);
+    
+    if (!examData.questions || examData.questions.length === 0) {
+      console.error(`❌ No questions in examData:`, examData);
+      throw new BadRequestException('AI did not generate any questions. Please try again.');
     }
+
+    const createdQuestions = [];
+    for (const questionData of examData.questions) {
+      try {
+        console.log(`📝 Creating question:`, questionData);
+        
+        // Validate required fields
+        if (!questionData.content) {
+          console.warn(`⚠️ Skipping question with no content:`, questionData);
+          continue;
+        }
+
+        // First, try to find existing question or create new one
+        const question = await this.prisma.question.create({
+          data: {
+            subjectId,
+            grade,
+            difficulty: (questionData.difficulty as Difficulty) || Difficulty.NB,
+            type: (questionData.type as QuestionType) || QuestionType.MCQ,
+            content: questionData.content,
+            options: questionData.options ? (questionData.options as any) : null,
+            correctAnswer: questionData.correctAnswer || '',
+            explanation: questionData.explanation || '',
+            createdBy: userId,
+          },
+        });
+
+        console.log(`✅ Created question: ${question.id}`);
+
+        // Link to exam
+        await this.prisma.examQuestion.create({
+          data: {
+            examId: exam.id,
+            questionId: question.id,
+            order: questionData.order || createdQuestions.length + 1,
+            points: questionData.points || 1.0,
+          },
+        });
+
+        createdQuestions.push(question.id);
+        console.log(`✅ Linked question ${question.id} to exam ${exam.id}`);
+      } catch (error) {
+        console.error(`❌ Error creating question:`, error);
+        console.error(`❌ Question data:`, questionData);
+        // Continue with other questions
+      }
+    }
+
+    console.log(`✅ Created ${createdQuestions.length} questions for exam ${exam.id}`);
 
     return {
       exam: await this.getExamById(exam.id),

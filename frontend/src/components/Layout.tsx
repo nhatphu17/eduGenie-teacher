@@ -10,6 +10,7 @@ export default function Layout() {
     { path: '/', label: 'Dashboard', icon: BookOpen },
     { path: '/documents', label: 'Tài liệu', icon: Upload },
     { path: '/questions', label: 'Ngân hàng câu hỏi', icon: FileText },
+    { path: '/exams', label: 'Danh sách đề thi', icon: ClipboardList },
     { path: '/exams/generate', label: 'Tạo đề thi', icon: ClipboardList },
     { path: '/exams/mix', label: 'Trộn đề', icon: Shuffle },
     { path: '/grading', label: 'Chấm bài', icon: CheckSquare },

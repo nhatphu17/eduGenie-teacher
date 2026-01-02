@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -8,6 +8,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export default function ExamGenerator() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     subjectId: '',
     grade: 6,
@@ -33,8 +34,10 @@ export default function ExamGenerator() {
       return res.data;
     },
     onSuccess: (data) => {
-      // Navigate to exam detail or show success
-      alert('Tạo đề thi thành công!');
+      console.log('Exam created:', data);
+      alert(`Tạo đề thi thành công! Đã tạo ${data.exam?.questions?.length || 0} câu hỏi.`);
+      // Invalidate exams query to refresh list
+      queryClient.invalidateQueries({ queryKey: ['exams'] });
     },
     onError: (error: any) => {
       alert(error.response?.data?.message || 'Có lỗi xảy ra');

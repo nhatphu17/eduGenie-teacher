@@ -6,6 +6,8 @@ import Dashboard from './pages/Dashboard';
 import QuestionBank from './pages/QuestionBank';
 import ExamGenerator from './pages/ExamGenerator';
 import ExamMixer from './pages/ExamMixer';
+import ExamsList from './pages/ExamsList';
+import ExamDetail from './pages/ExamDetail';
 import Grading from './pages/Grading';
 import LessonPlanGenerator from './pages/LessonPlanGenerator';
 import Subscription from './pages/Subscription';
@@ -34,8 +36,10 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="documents" element={<Documents />} />
           <Route path="questions" element={<QuestionBank />} />
+          <Route path="exams" element={<ExamsList />} />
           <Route path="exams/generate" element={<ExamGenerator />} />
           <Route path="exams/mix" element={<ExamMixer />} />
+          <Route path="exams/:id" element={<ExamDetail />} />
           <Route path="grading" element={<Grading />} />
           <Route path="lesson-plans" element={<LessonPlanGenerator />} />
           <Route path="subscription" element={<Subscription />} />
