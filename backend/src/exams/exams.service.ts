@@ -55,18 +55,37 @@ export class ExamsService {
 
     // 2. Build prompt for exam generation
     const totalQuestions = difficultyDistribution.NB + difficultyDistribution.TH + difficultyDistribution.VD;
-    const prompt = `Tạo đề thi với các yêu cầu sau:
-- Tổng số câu: ${totalQuestions}
-- Phân bố độ khó: Nhận biết (${difficultyDistribution.NB} câu), Thông hiểu (${difficultyDistribution.TH} câu), Vận dụng (${difficultyDistribution.VD} câu)
-- Loại câu hỏi: ${questionTypes.join(', ')}
-- Thời gian: ${duration} phút
-- Lớp: ${grade}
+    const prompt = `Bạn là giáo viên Toán lớp ${grade}. Hãy tạo một đề thi với các yêu cầu sau:
 
-Yêu cầu:
-1. Tất cả câu hỏi PHẢI dựa trên nội dung trong tài liệu nguồn được cung cấp
-2. Không được sử dụng kiến thức bên ngoài
-3. Mỗi câu hỏi phải có đáp án đúng và giải thích
-4. Đối với câu hỏi trắc nghiệm, cung cấp 4 phương án A, B, C, D`;
+YÊU CẦU ĐỀ THI:
+- Tổng số câu hỏi: ${totalQuestions}
+- Phân bố độ khó:
+  + Nhận biết (NB): ${difficultyDistribution.NB} câu - Câu hỏi kiểm tra kiến thức cơ bản, định nghĩa, công thức
+  + Thông hiểu (TH): ${difficultyDistribution.TH} câu - Câu hỏi yêu cầu hiểu và vận dụng kiến thức vào tình huống đơn giản
+  + Vận dụng (VD): ${difficultyDistribution.VD} câu - Câu hỏi yêu cầu vận dụng kiến thức vào bài toán thực tế
+- Loại câu hỏi: ${questionTypes.join(', ')}
+- Thời gian làm bài: ${duration} phút
+
+HƯỚNG DẪN TẠO CÂU HỎI:
+1. Dựa vào nội dung trong tài liệu nguồn được cung cấp bên dưới
+2. Tạo câu hỏi phù hợp với chương trình lớp ${grade}
+3. Mỗi câu hỏi trắc nghiệm (MCQ) phải có:
+   - Nội dung câu hỏi rõ ràng
+   - 4 phương án A, B, C, D (trong đó có 1 đáp án đúng)
+   - Đáp án đúng (ghi số thứ tự: 0, 1, 2, hoặc 3)
+   - Giải thích ngắn gọn
+   - Điểm số (thường là 1 điểm)
+4. Mỗi câu hỏi tự luận (ESSAY) phải có:
+   - Nội dung câu hỏi rõ ràng
+   - Đáp án hoặc hướng dẫn chấm
+   - Giải thích
+   - Điểm số (thường là 2-3 điểm)
+
+LƯU Ý:
+- Nếu tài liệu có đủ nội dung, hãy tạo đầy đủ ${totalQuestions} câu hỏi
+- Nếu tài liệu thiếu một số phần, hãy tạo câu hỏi dựa trên phần có sẵn
+- Đảm bảo câu hỏi phù hợp với độ khó yêu cầu (NB/TH/VD)
+- Tất cả câu hỏi phải bằng tiếng Việt`;
 
     // 3. Define JSON schema for structured output
     const jsonSchema = `{
@@ -132,9 +151,21 @@ Yêu cầu:
     console.log(`📝 Questions array:`, examData.questions);
     console.log(`📝 Questions count:`, examData.questions?.length || 0);
     
+    // Handle error response from AI
+    if (examData.error) {
+      console.error(`❌ AI returned error:`, examData.error);
+      console.log(`📝 Attempting to generate fallback questions from context chunks...`);
+      
+      // Try to create at least some basic questions from context
+      const fallbackQuestions = this.createFallbackQuestions(relevantChunks, totalQuestions, difficultyDistribution, questionTypes);
+      examData.questions = fallbackQuestions;
+      examData.title = examData.title || `Đề thi ${subject.name} lớp ${grade}`;
+      examData.description = examData.description || 'Đề thi được tạo từ tài liệu nguồn';
+    }
+    
     if (!examData.questions || examData.questions.length === 0) {
-      console.error(`❌ No questions in examData:`, examData);
-      throw new BadRequestException('AI did not generate any questions. Please try again.');
+      console.error(`❌ No questions in examData after fallback:`, examData);
+      throw new BadRequestException('Không thể tạo câu hỏi từ tài liệu hiện có. Vui lòng tải lên tài liệu với nội dung phù hợp hơn.');
     }
 
     const createdQuestions = [];

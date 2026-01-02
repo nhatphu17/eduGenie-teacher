@@ -341,13 +341,17 @@ Remember: ONLY use information from the source materials above. If information i
     contextChunks: Array<{ content: string; source?: string }>,
     jsonSchema: string,
   ): Promise<any> {
-    const systemPrompt = `You are an AI assistant helping Vietnamese THCS teachers.
-CRITICAL RULES:
-1. You MUST ONLY use information from the provided source materials.
-2. You MUST NOT use any external knowledge.
-3. You MUST return valid JSON matching this schema: ${jsonSchema}
-4. If source materials don't contain enough information, return an error in the JSON.
-5. All text must be in Vietnamese.`;
+    const systemPrompt = `You are an AI assistant helping Vietnamese THCS teachers create educational content.
+
+CRITICAL INSTRUCTIONS:
+1. You MUST return valid JSON matching this schema: ${jsonSchema}
+2. You MUST include a "questions" array with at least some questions - NEVER return an error object.
+3. You can use information from the provided source materials AND your knowledge of Vietnamese THCS curriculum (grades 6-9).
+4. If source materials mention topics like "Tập hợp", "Số tự nhiên", "Phép cộng", etc., create questions about those topics even if details are limited.
+5. All text must be in Vietnamese.
+6. For exam generation: Create questions that test understanding of concepts mentioned in source materials. You can adapt, simplify, or create similar questions based on the topics.
+7. If you cannot create the exact number of questions requested, create as many as possible (at least 3-4 questions minimum).
+8. NEVER return {"error": "..."} - always return a valid structure with questions array.`;
 
     const result = await this.generateWithRAG(userId, actionType, prompt, contextChunks, systemPrompt);
 
