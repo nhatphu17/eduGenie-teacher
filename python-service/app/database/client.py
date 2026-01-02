@@ -17,12 +17,22 @@ class DatabaseClient:
     def __init__(self):
         # Ensure DATABASE_URL uses pymysql driver
         db_url = settings.DATABASE_URL
+        
+        # Remove PostgreSQL-specific parameters (schema=public) for MySQL
+        if '?schema=' in db_url:
+            db_url = db_url.split('?schema=')[0]
+        if '?schema=' in db_url:
+            # Handle case where schema is in the middle
+            db_url = db_url.split('?schema=')[0]
+        
         if db_url.startswith('mysql://'):
             # Replace mysql:// with mysql+pymysql://
             db_url = db_url.replace('mysql://', 'mysql+pymysql://', 1)
         elif not db_url.startswith('mysql+pymysql://'):
             # If already has driver, ensure it's pymysql
             db_url = db_url.replace('mysql+mysqldb://', 'mysql+pymysql://', 1)
+        
+        logger.info(f"Connecting to database: {db_url.split('@')[1] if '@' in db_url else '***'}")
         
         self.engine = create_engine(
             db_url,

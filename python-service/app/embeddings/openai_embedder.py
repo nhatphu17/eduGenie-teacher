@@ -27,11 +27,18 @@ class OpenAIEmbedder:
             List of floats (embedding vector)
         """
         try:
-            response = self.client.embeddings.create(
-                model=self.model,
-                input=text,
-                dimensions=self.dimensions,
-            )
+            # text-embedding-3-large supports dimensions parameter
+            # But check if model supports it first
+            params = {
+                'model': self.model,
+                'input': text,
+            }
+            
+            # Only add dimensions if model supports it (text-embedding-3-*)
+            if 'text-embedding-3' in self.model:
+                params['dimensions'] = self.dimensions
+            
+            response = self.client.embeddings.create(**params)
             
             embedding = response.data[0].embedding
             logger.debug(f"Generated embedding: {len(embedding)} dimensions")
@@ -54,11 +61,16 @@ class OpenAIEmbedder:
         """
         try:
             # OpenAI supports batch embedding
-            response = self.client.embeddings.create(
-                model=self.model,
-                input=texts,
-                dimensions=self.dimensions,
-            )
+            params = {
+                'model': self.model,
+                'input': texts,
+            }
+            
+            # Only add dimensions if model supports it (text-embedding-3-*)
+            if 'text-embedding-3' in self.model:
+                params['dimensions'] = self.dimensions
+            
+            response = self.client.embeddings.create(**params)
             
             embeddings = [item.embedding for item in response.data]
             logger.info(f"Generated {len(embeddings)} embeddings in batch")
