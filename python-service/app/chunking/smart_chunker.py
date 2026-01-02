@@ -1,7 +1,7 @@
 """Smart chunking with context preservation"""
 from typing import Dict, List
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from loguru import logger
+import re
 
 
 class SmartChunker:
@@ -13,16 +13,79 @@ class SmartChunker:
             chunk_size: Target chunk size in tokens (~3x in characters)
             chunk_overlap: Overlap between chunks in tokens
         """
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
+        self.chunk_size = chunk_size * 3  # Convert tokens to chars (rough estimate)
+        self.chunk_overlap = chunk_overlap * 3
+        self.separators = ["\n\n\n", "\n\n", "\n", ". ", " ", ""]
+    
+    def _split_text(self, text: str) -> List[str]:
+        """
+        Recursive text splitting similar to LangChain's RecursiveCharacterTextSplitter
+        """
+        chunks = []
         
-        # Use LangChain's recursive splitter
-        self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size * 3,  # Convert tokens to chars (rough estimate)
-            chunk_overlap=chunk_overlap * 3,
-            separators=["\n\n\n", "\n\n", "\n", ". ", " ", ""],
-            length_function=len,
-        )
+        # Try splitting by each separator
+        for separator in self.separators:
+            if separator == "":
+                # Last resort: split by character
+                if len(text) <= self.chunk_size:
+                    chunks.append(text)
+                    return chunks
+                
+                # Split into chunks with overlap
+                start = 0
+                while start < len(text):
+                    end = min(start + self.chunk_size, len(text))
+                    chunk = text[start:end]
+                    if chunk.strip():
+                        chunks.append(chunk)
+                    start = end - self.chunk_overlap
+                    if start >= end:
+                        break
+                return chunks
+            
+            # Try splitting by this separator
+            parts = text.split(separator)
+            
+            # If splitting produces reasonable chunks, use them
+            if len(parts) > 1:
+                current_chunk = ""
+                for part in parts:
+                    part_with_sep = part + separator if part != parts[-1] else part
+                    
+                    # If adding this part would exceed chunk size
+                    if len(current_chunk) + len(part_with_sep) > self.chunk_size and current_chunk:
+                        # Save current chunk
+                        chunks.append(current_chunk)
+                        # Start new chunk with overlap
+                        if self.chunk_overlap > 0 and len(current_chunk) > self.chunk_overlap:
+                            overlap_text = current_chunk[-self.chunk_overlap:]
+                            current_chunk = overlap_text + part_with_sep
+                        else:
+                            current_chunk = part_with_sep
+                    else:
+                        current_chunk += part_with_sep
+                
+                # Add remaining chunk
+                if current_chunk.strip():
+                    chunks.append(current_chunk)
+                
+                # If we got reasonable chunks, return them
+                if chunks and all(len(c) <= self.chunk_size * 1.5 for c in chunks):
+                    return chunks
+        
+        # Fallback: simple splitting
+        if not chunks:
+            start = 0
+            while start < len(text):
+                end = min(start + self.chunk_size, len(text))
+                chunk = text[start:end]
+                if chunk.strip():
+                    chunks.append(chunk)
+                start = end - self.chunk_overlap
+                if start >= end:
+                    break
+        
+        return chunks
     
     def chunk_chapter(self, chapter: Dict) -> List[Dict]:
         """
@@ -39,8 +102,8 @@ class SmartChunker:
             logger.warning(f"Chapter {chapter.get('number')} has insufficient content")
             return []
         
-        # Split into chunks
-        chunks = self.splitter.split_text(content)
+        # Split into chunks using our custom splitter
+        chunks = self._split_text(content)
         
         logger.info(
             f"Chunked chapter {chapter.get('number')} into {len(chunks)} chunks "
