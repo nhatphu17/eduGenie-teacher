@@ -57,12 +57,23 @@ export class DocumentsService {
     type: DocumentType,
     file: Express.Multer.File,
   ) {
+    this.logger.log(`📥 Upload request: ${file.originalname}, size: ${file.size}, mimeType: ${file.mimetype}`);
+    
     // Check file size (max 10MB for Python service)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
       throw new BadRequestException(
         `File size exceeds limit of ${maxSize / 1024 / 1024}MB. Please upload a smaller file.`,
       );
+    }
+    
+    // Validate file type (accept common document types)
+    const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt'];
+    const fileExtension = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
+    
+    if (!allowedExtensions.includes(fileExtension)) {
+      this.logger.warn(`⚠️ Unsupported file type: ${fileExtension} for file ${file.originalname}`);
+      // Don't reject - let Python service handle it
     }
 
     // 1. Create document record with PENDING status
@@ -78,14 +89,17 @@ export class DocumentsService {
       },
     });
 
-    this.logger.log(`Created document record: ${document.id}`);
+    this.logger.log(`✅ Created document record: ${document.id}`);
 
     // 2. Try Python service first
+    this.logger.log(`🔍 Checking Python service health...`);
     const isPythonServiceAvailable = await this.pythonService.checkHealth();
+    this.logger.log(`Python service available: ${isPythonServiceAvailable}`);
 
     if (isPythonServiceAvailable) {
       try {
-        this.logger.log(`Sending document ${document.id} to Python service`);
+        this.logger.log(`📤 Sending document ${document.id} to Python service`);
+        this.logger.log(`📋 Document details: subjectId=${subjectId}, type=${type}, fileName=${file.originalname}`);
         
         await this.pythonService.processDocument(
           file,
@@ -102,21 +116,25 @@ export class DocumentsService {
           data: { status: ProcessingStatus.PROCESSING },
         });
 
+        this.logger.log(`✅ Document ${document.id} queued for Python processing`);
+
         return {
           message: 'Document uploaded and queued for processing by Python service',
           documentId: document.id,
           status: 'processing',
         };
       } catch (error) {
-        this.logger.warn(
-          `Python service failed for document ${document.id}: ${error.message}. Falling back to local processing.`,
+        this.logger.error(
+          `❌ Python service failed for document ${document.id}: ${error.message}`,
         );
+        this.logger.error(`Stack trace: ${error.stack}`);
         
         // Fallback to local processing
+        this.logger.log(`🔄 Falling back to local processing for document ${document.id}`);
         return this.processDocumentLocally(document.id, file, subjectId, type, userId);
       }
     } else {
-      this.logger.warn('Python service unavailable, using local processing');
+      this.logger.warn('⚠️ Python service unavailable, using local processing');
       return this.processDocumentLocally(document.id, file, subjectId, type, userId);
     }
   }

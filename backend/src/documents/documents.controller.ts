@@ -30,7 +30,26 @@ export class DocumentsController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
-        fileSize: 3 * 1024 * 1024, // 3MB limit to prevent memory issues
+        fileSize: 10 * 1024 * 1024, // 10MB limit (matching service limit)
+      },
+      fileFilter: (req, file, cb) => {
+        // Accept all file types - let Python service handle validation
+        // Common mime types for documents
+        const allowedMimeTypes = [
+          'application/pdf',
+          'application/msword', // .doc
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+          'application/vnd.ms-excel', // .xls
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+          'text/plain', // .txt
+          // Accept any mime type to avoid validation issues
+        ];
+        
+        // Log mime type for debugging
+        console.log(`📄 File upload: ${file.originalname}, mimeType: ${file.mimetype}`);
+        
+        // Accept all files - validation will happen in service
+        cb(null, true);
       },
     }),
   )
@@ -96,9 +115,14 @@ export class DocumentsController {
   @Post('upload-folder')
   @UseInterceptors(
     FilesInterceptor('files', 20, {
-      // Allow up to 20 files, max 3MB each
+      // Allow up to 20 files, max 10MB each
       limits: {
-        fileSize: 3 * 1024 * 1024,
+        fileSize: 10 * 1024 * 1024,
+      },
+      fileFilter: (req, file, cb) => {
+        // Accept all file types - let Python service handle validation
+        console.log(`📄 Folder upload: ${file.originalname}, mimeType: ${file.mimetype}`);
+        cb(null, true);
       },
     }),
   )
