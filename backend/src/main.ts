@@ -34,7 +34,12 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.PORT || 3001;
+  // Parse PORT as number, fallback to 3001
+  const port = parseInt(process.env.PORT || '3001', 10);
+  
+  // Debug: Log port being used
+  console.log(`🔧 Using PORT: ${port} (from env: ${process.env.PORT || 'default'})`);
+  
   await app.listen(port);
   console.log(`🚀 EduGenie Teacher API is running on: http://localhost:${port}`);
   console.log(`📚 API Documentation: http://localhost:${port}/api/docs`);

@@ -17,6 +17,8 @@ import { SubjectsModule } from './subjects/subjects.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env',
+      ignoreEnvFile: false,
     }),
     PrismaModule,
     AuthModule,
