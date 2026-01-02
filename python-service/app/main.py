@@ -1,7 +1,6 @@
 """FastAPI application"""
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from typing import Optional
 from loguru import logger
 import os
@@ -32,14 +31,6 @@ app.add_middleware(
 processor = DocumentProcessor()
 
 
-class ProcessDocumentRequest(BaseModel):
-    document_id: str
-    subject_id: str
-    document_type: str
-    user_id: Optional[str] = None
-    original_filename: Optional[str] = None
-
-
 @app.get("/")
 async def root():
     """Health check"""
@@ -59,8 +50,12 @@ async def health():
 @app.post("/api/v1/process")
 async def process_document(
     background_tasks: BackgroundTasks,
-    request: ProcessDocumentRequest,
     file: UploadFile = File(...),
+    document_id: str = Form(...),
+    subject_id: str = Form(...),
+    document_type: str = Form(...),
+    user_id: Optional[str] = Form(None),
+    original_filename: Optional[str] = Form(None),
 ):
     """
     Process a document: parse, chunk, generate embeddings, save to DB
@@ -86,22 +81,25 @@ async def process_document(
     async with aiofiles.open(temp_file_path, 'wb') as f:
         await f.write(file_content)
     
-    logger.info(f"Received file: {file.filename}, size: {len(file_content)} bytes")
+    logger.info(
+        f"Received file: {file.filename}, size: {len(file_content)} bytes, "
+        f"document_id: {document_id}, subject_id: {subject_id}"
+    )
     
     # Process in background
     background_tasks.add_task(
         _process_document_task,
         temp_file_path,
-        request.document_id,
-        request.subject_id,
-        request.document_type,
-        request.user_id,
-        request.original_filename or file.filename,
+        document_id,
+        subject_id,
+        document_type,
+        user_id,
+        original_filename or file.filename,
     )
     
     return {
         "status": "queued",
-        "document_id": request.document_id,
+        "document_id": document_id,
         "message": "Document queued for processing",
     }
 
@@ -135,8 +133,12 @@ async def _process_document_task(
 
 @app.post("/api/v1/process-sync")
 async def process_document_sync(
-    request: ProcessDocumentRequest,
     file: UploadFile = File(...),
+    document_id: str = Form(...),
+    subject_id: str = Form(...),
+    document_type: str = Form(...),
+    user_id: Optional[str] = Form(None),
+    original_filename: Optional[str] = Form(None),
 ):
     """
     Process document synchronously (for testing)
@@ -152,11 +154,11 @@ async def process_document_sync(
     try:
         result = await processor.process_document(
             file_path=temp_file_path,
-            document_id=request.document_id,
-            subject_id=request.subject_id,
-            document_type=request.document_type,
-            user_id=request.user_id,
-            original_filename=request.original_filename or file.filename,
+            document_id=document_id,
+            subject_id=subject_id,
+            document_type=document_type,
+            user_id=user_id,
+            original_filename=original_filename or file.filename,
         )
         return result
     finally:
