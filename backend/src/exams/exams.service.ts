@@ -24,10 +24,33 @@ export class ExamsService {
     // Search in ALL documents in the folder (increased limit to get more context)
     const relevantChunks = await this.documentsService.searchDocuments(searchQuery, subjectId, grade, 30);
 
+    // Debug: Log available chunks
+    const availableChunks = await this.prisma.chunk.findMany({
+      where: {
+        document: {
+          subjectId,
+          status: 'COMPLETED',
+        },
+        embedding: { not: null },
+      },
+      select: {
+        id: true,
+        document: {
+          select: {
+            originalFileName: true,
+            status: true,
+          },
+        },
+      },
+      take: 5,
+    });
+
     if (relevantChunks.length === 0) {
-      throw new BadRequestException(
-        'Không tìm thấy tài liệu phù hợp. Vui lòng tải lên sách giáo khoa hoặc tài liệu giảng dạy trước.',
-      );
+      const errorMessage = availableChunks.length === 0
+        ? 'Không tìm thấy tài liệu phù hợp. Vui lòng tải lên sách giáo khoa hoặc tài liệu giảng dạy trước. (Không có chunks trong database)'
+        : `Không tìm thấy tài liệu phù hợp với query. Có ${availableChunks.length} chunks trong database nhưng không match với query. Vui lòng thử lại với query khác hoặc kiểm tra tài liệu đã được xử lý chưa.`;
+      
+      throw new BadRequestException(errorMessage);
     }
 
     // 2. Build prompt for exam generation

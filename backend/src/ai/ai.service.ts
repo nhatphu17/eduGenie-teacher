@@ -101,7 +101,7 @@ export class AiService {
             similarity,
           };
         })
-        .filter((item) => item !== null && item.similarity > 0.7)
+        .filter((item) => item !== null && item.similarity > 0.5) // Lower threshold from 0.7 to 0.5
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit);
 

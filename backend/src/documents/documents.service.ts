@@ -436,8 +436,11 @@ export class DocumentsService {
     grade?: number,
     limit: number = 10,
   ) {
+    this.logger.log(`Searching documents: query="${query}", subjectId=${subjectId}, grade=${grade}, limit=${limit}`);
+    
     // Generate embedding for query
     const queryEmbedding = await this.aiService.generateEmbedding(query);
+    this.logger.log(`Generated query embedding: ${queryEmbedding.length} dimensions`);
 
     // Retrieve relevant chunks
     const relevantChunks = await this.aiService.retrieveRelevantChunks(
@@ -446,6 +449,8 @@ export class DocumentsService {
       grade || 0,
       limit,
     );
+
+    this.logger.log(`Found ${relevantChunks.length} relevant chunks`);
 
     return relevantChunks.map((doc) => ({
       id: doc.id,
