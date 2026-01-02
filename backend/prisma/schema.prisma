@@ -25,6 +25,14 @@ enum DocumentType {
   TEACHER_MATERIAL
 }
 
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIALLY_COMPLETED
+}
+
 enum Difficulty {
   NB  // Nhận biết
   TH  // Thông hiểu
@@ -99,24 +107,69 @@ model Subject {
 }
 
 model Document {
-  id              String       @id @default(cuid())
+  id              String            @id @default(cuid())
   subjectId       String
-  subject         Subject      @relation(fields: [subjectId], references: [id])
+  subject         Subject           @relation(fields: [subjectId], references: [id])
   type            DocumentType
-  content         String        @db.LongText
-  embedding       Json?        // Vector embeddings stored as JSON
-  chunkIndex      Int?         // For chunked documents
+  content         String?           @db.LongText  // Made nullable - will be in chunks
+  embedding       Json?             // Legacy - kept for backward compat
+  chunkIndex      Int?               // Legacy - kept for backward compat
   originalFileName String?
-  uploadedBy      String?      // User ID
-  uploader        User?        @relation("DocumentUploader", fields: [uploadedBy], references: [id])
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  filePath        String?            // Path to original file
+  fileSize        Int?
+  mimeType        String?
+  
+  // Processing status
+  status          ProcessingStatus?  @default(PENDING)
+  processedAt     DateTime?
+  errorMessage    String?            @db.LongText
+  
+  uploadedBy      String?            // User ID
+  uploader        User?              @relation("DocumentUploader", fields: [uploadedBy], references: [id])
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   questions       Question[]
+  chunks          Chunk[]            // NEW: Chunks from Python service
 
   @@index([subjectId])
   @@index([type])
+  @@index([status])
   @@map("documents")
+}
+
+model Chunk {
+  id              String       @id @default(cuid())
+  documentId      String
+  document        Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  // Location metadata
+  chapterNumber   Int?
+  chapterTitle    String?
+  pageStart       Int?
+  pageEnd         Int?
+  
+  // Content
+  content         String       @db.LongText
+  contentLength   Int
+  tokenCount      Int?
+  
+  // Embedding
+  embedding       Json?        // Vector stored as JSON
+  embeddingModel  String?      // "text-embedding-3-large"
+  
+  // Chunk metadata
+  chunkIndex      Int
+  chunkType       String       @default("TEXT")  // TEXT, TABLE, FORMULA, etc.
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  
+  questions       Question[]   // Questions generated from this chunk
+  
+  @@index([documentId])
+  @@index([chapterNumber])
+  @@map("chunks")
 }
 
 model Question {
@@ -130,8 +183,14 @@ model Question {
   options           Json?        // For MCQ: array of options
   correctAnswer     String       // For MCQ: option index/letter, for Essay: rubric
   explanation       String?      @db.LongText
+  
+  // Source tracking (NEW)
   sourceDocumentId  String?
   sourceDocument    Document?    @relation(fields: [sourceDocumentId], references: [id])
+  sourceChunkId     String?       // Link to source chunk
+  sourceChunk       Chunk?        @relation(fields: [sourceChunkId], references: [id])
+  chapterNumber     Int?          // For filtering by chapter
+  
   createdBy         String?      // User ID
   creator           User?        @relation("QuestionCreator", fields: [createdBy], references: [id])
   createdAt         DateTime     @default(now())
@@ -142,6 +201,8 @@ model Question {
   @@index([subjectId, grade])
   @@index([difficulty])
   @@index([type])
+  @@index([chapterNumber])
+  @@index([sourceChunkId])
   @@map("questions")
 }
 

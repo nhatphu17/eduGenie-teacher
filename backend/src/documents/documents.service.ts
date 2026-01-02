@@ -1,15 +1,19 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
-import { DocumentType } from '@prisma/client';
+import { PythonServiceClient } from './python-service.client';
+import { DocumentType, ProcessingStatus } from '@prisma/client';
 import * as mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
+    private pythonService: PythonServiceClient, // NEW
   ) {}
 
   /**
@@ -45,8 +49,7 @@ export class DocumentsService {
   }
 
   /**
-   * Upload document - ONLY save file, process embeddings later
-   * This prevents memory issues by not processing everything in one request
+   * Upload document - Try Python service first, fallback to local processing
    */
   async uploadDocument(
     userId: string,
@@ -54,14 +57,80 @@ export class DocumentsService {
     type: DocumentType,
     file: Express.Multer.File,
   ) {
-    // Check file size (max 3MB)
-    const maxSize = 3 * 1024 * 1024; // 3MB
+    // Check file size (max 10MB for Python service)
+    const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
       throw new BadRequestException(
         `File size exceeds limit of ${maxSize / 1024 / 1024}MB. Please upload a smaller file.`,
       );
     }
 
+    // 1. Create document record with PENDING status
+    const document = await this.prisma.document.create({
+      data: {
+        subjectId,
+        type,
+        originalFileName: file.originalname,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        status: ProcessingStatus.PENDING,
+        uploadedBy: userId,
+      },
+    });
+
+    this.logger.log(`Created document record: ${document.id}`);
+
+    // 2. Try Python service first
+    const isPythonServiceAvailable = await this.pythonService.checkHealth();
+
+    if (isPythonServiceAvailable) {
+      try {
+        this.logger.log(`Sending document ${document.id} to Python service`);
+        
+        await this.pythonService.processDocument(
+          file,
+          document.id,
+          subjectId,
+          type,
+          userId,
+          file.originalname,
+        );
+
+        // Update status to PROCESSING
+        await this.prisma.document.update({
+          where: { id: document.id },
+          data: { status: ProcessingStatus.PROCESSING },
+        });
+
+        return {
+          message: 'Document uploaded and queued for processing by Python service',
+          documentId: document.id,
+          status: 'processing',
+        };
+      } catch (error) {
+        this.logger.warn(
+          `Python service failed for document ${document.id}: ${error.message}. Falling back to local processing.`,
+        );
+        
+        // Fallback to local processing
+        return this.processDocumentLocally(document.id, file, subjectId, type, userId);
+      }
+    } else {
+      this.logger.warn('Python service unavailable, using local processing');
+      return this.processDocumentLocally(document.id, file, subjectId, type, userId);
+    }
+  }
+
+  /**
+   * Local processing (fallback when Python service unavailable)
+   */
+  private async processDocumentLocally(
+    documentId: string,
+    file: Express.Multer.File,
+    subjectId: string,
+    type: DocumentType,
+    userId: string,
+  ) {
     // Extract text
     let textContent: string;
     const fileBuffer = file.buffer;
@@ -80,46 +149,51 @@ export class DocumentsService {
         throw new BadRequestException('Unsupported file type. Please upload Word, Excel, or text files.');
       }
     } finally {
-      // Clear file buffer
       (file as any).buffer = null;
     }
 
     if (!textContent || textContent.trim().length === 0) {
+      await this.prisma.document.update({
+        where: { id: documentId },
+        data: {
+          status: ProcessingStatus.FAILED,
+          errorMessage: 'Document appears to be empty',
+        },
+      });
       throw new BadRequestException('Document appears to be empty');
     }
 
-    // Limit text content to prevent issues (500KB max for LONGTEXT)
-    // But we'll chunk it anyway, so this is just a safety limit
-    const maxTextLength = 500 * 1024; // 500KB - LONGTEXT can handle up to 4GB
+    // Limit text content
+    const maxTextLength = 500 * 1024; // 500KB
     if (textContent.length > maxTextLength) {
       textContent = textContent.substring(0, maxTextLength);
-      console.log(`Text content truncated to ${maxTextLength} characters`);
+      this.logger.warn(`Text content truncated to ${maxTextLength} characters`);
     }
 
-    // OPTION 1: Save document WITHOUT embeddings first (fast, no memory issue)
-    // Process embeddings in background or on-demand
-    const document = await this.prisma.document.create({
+    // Update document with content
+    await this.prisma.document.update({
+      where: { id: documentId },
       data: {
-        subjectId,
-        type,
-        content: textContent, // Save full content
-        embedding: null, // Embedding will be generated later
-        chunkIndex: 0,
-        originalFileName: file.originalname,
-        uploadedBy: userId,
+        content: textContent,
+        status: ProcessingStatus.PROCESSING,
       },
     });
 
-    // OPTION 2: Process embeddings in background (async, non-blocking)
-    // This prevents blocking the request and memory issues
-    this.processEmbeddingsAsync(document.id, textContent).catch((error) => {
-      console.error(`Failed to process embeddings for document ${document.id}:`, error);
-      // Don't throw - document is already saved
+    // Process embeddings in background
+    this.processEmbeddingsAsync(documentId, textContent).catch((error) => {
+      this.logger.error(`Failed to process embeddings for document ${documentId}:`, error);
+      this.prisma.document.update({
+        where: { id: documentId },
+        data: {
+          status: ProcessingStatus.FAILED,
+          errorMessage: error.message,
+        },
+      });
     });
 
     return {
-      message: 'Document uploaded successfully. Embeddings are being processed in the background.',
-      documentId: document.id,
+      message: 'Document uploaded successfully. Processing locally in background.',
+      documentId,
       status: 'processing',
     };
   }
@@ -292,42 +366,61 @@ export class DocumentsService {
 
   /**
    * Get all documents for a subject/grade (including all chunks)
-   * Used for folder view and RAG search
+   * Now uses Chunk model for better structure
    */
   async getDocumentsBySubject(subjectId: string, type?: DocumentType) {
+    // Get documents with their chunks
     const documents = await this.prisma.document.findMany({
       where: {
         subjectId,
         ...(type && { type }),
       },
+      include: {
+        chunks: {
+          orderBy: { chunkIndex: 'asc' },
+        },
+      },
       orderBy: {
         originalFileName: 'asc',
-        chunkIndex: 'asc',
-      },
-      select: {
-        id: true,
-        type: true,
-        originalFileName: true,
-        chunkIndex: true,
-        createdAt: true,
       },
     });
 
     // Group by file name
     const grouped = documents.reduce((acc: any, doc) => {
       const fileName = doc.originalFileName || 'Unknown';
+      
       if (!acc[fileName]) {
         acc[fileName] = {
           fileName,
           type: doc.type,
+          documentId: doc.id,
+          status: doc.status,
           chunks: [],
           createdAt: doc.createdAt,
+          isProcessed: doc.status === 'COMPLETED',
         };
       }
-      acc[fileName].chunks.push({
-        id: doc.id,
-        chunkIndex: doc.chunkIndex,
-      });
+
+      // Add chunks from Chunk model (preferred)
+      if (doc.chunks && doc.chunks.length > 0) {
+        doc.chunks.forEach((chunk) => {
+          acc[fileName].chunks.push({
+            id: chunk.id,
+            chunkIndex: chunk.chunkIndex,
+            chapterNumber: chunk.chapterNumber,
+            chapterTitle: chunk.chapterTitle,
+            isProcessed: chunk.embedding !== null,
+          });
+        });
+      } else {
+        // Fallback: Legacy document-based chunks
+        acc[fileName].chunks.push({
+          id: doc.id,
+          chunkIndex: doc.chunkIndex || 0,
+          isProcessed: doc.embedding !== null,
+        });
+      }
+
       return acc;
     }, {});
 

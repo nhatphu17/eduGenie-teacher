@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  python-service:
+    build: .
+    container_name: edugenie-python-service
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    volumes:
+      - ./uploads:/app/uploads
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - edugenie-network
+
+networks:
+  edugenie-network:
+    external: true
+

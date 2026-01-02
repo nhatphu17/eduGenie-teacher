@@ -38,3 +38,4 @@ echo "To start the application:"
 echo "  Backend:  cd backend && npm run start:dev"
 echo "  Frontend: cd frontend && npm run dev"
 
+

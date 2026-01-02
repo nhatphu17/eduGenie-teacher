@@ -55,13 +55,13 @@ export class AiService {
 
   /**
    * Retrieve relevant document chunks using vector similarity
-   * Searches ALL documents in the subject/grade folder
+   * Now uses Chunk model (from Python service) instead of Document
    */
   async retrieveRelevantChunks(
     queryEmbedding: number[],
     subjectId: string,
     grade: number,
-    limit: number = 20, // Increased to search more documents
+    limit: number = 20,
   ) {
     // Get subject to verify grade
     const subject = await this.prisma.subject.findUnique({
@@ -72,18 +72,63 @@ export class AiService {
       return [];
     }
 
-    // Get ALL documents for the subject (all files in the folder)
-    // Note: Documents are linked to subject, and subject has grade
-    // So all documents in this subjectId belong to the same grade
+    // Try to get chunks first (from Python service)
+    const chunks = await this.prisma.chunk.findMany({
+      where: {
+        document: {
+          subjectId,
+          status: 'COMPLETED', // Only processed documents
+        },
+        embedding: { not: null },
+      },
+      include: {
+        document: true,
+      },
+      take: 100, // Get more for similarity calculation
+    });
+
+    // If we have chunks, use them (preferred method)
+    if (chunks.length > 0) {
+      const scoredChunks = chunks
+        .map((chunk) => {
+          if (!chunk.embedding || typeof chunk.embedding !== 'object') {
+            return null;
+          }
+          const embedding = chunk.embedding as number[];
+          const similarity = this.cosineSimilarity(queryEmbedding, embedding);
+          return {
+            chunk,
+            similarity,
+          };
+        })
+        .filter((item) => item !== null && item.similarity > 0.7)
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit);
+
+      // Return in format compatible with existing code
+      return scoredChunks.map((item) => ({
+        id: item.chunk.id,
+        content: item.chunk.content,
+        type: item.chunk.document.type,
+        originalFileName: item.chunk.document.originalFileName || 'Unknown',
+        chunkIndex: item.chunk.chunkIndex,
+        chapterNumber: item.chunk.chapterNumber,
+        chapterTitle: item.chunk.chapterTitle,
+        pageStart: item.chunk.pageStart,
+        pageEnd: item.chunk.pageEnd,
+      }));
+    }
+
+    // Fallback: Use old Document-based method (for backward compatibility)
     const documents = await this.prisma.document.findMany({
       where: {
         subjectId,
-        embedding: { not: null }, // Only get documents with embeddings
+        embedding: { not: null },
+        status: { in: ['COMPLETED', 'PROCESSING'] },
       },
     });
 
-    // Calculate similarity scores
-    const scoredChunks = documents
+    const scoredDocs = documents
       .map((doc) => {
         if (!doc.embedding || typeof doc.embedding !== 'object') {
           return null;
@@ -95,11 +140,17 @@ export class AiService {
           similarity,
         };
       })
-      .filter((item) => item !== null && item.similarity > 0.7) // Threshold
+      .filter((item) => item !== null && item.similarity > 0.7)
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, limit);
 
-    return scoredChunks.map((item) => item.document);
+    return scoredDocs.map((item) => ({
+      id: item.document.id,
+      content: item.document.content || '',
+      type: item.document.type,
+      originalFileName: item.document.originalFileName || 'Unknown',
+      chunkIndex: item.document.chunkIndex || 0,
+    }));
   }
 
   /**

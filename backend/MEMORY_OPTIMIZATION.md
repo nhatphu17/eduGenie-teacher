@@ -38,3 +38,4 @@
 - Sử dụng background processing cho file lớn
 - Monitor memory usage trong production
 
+
