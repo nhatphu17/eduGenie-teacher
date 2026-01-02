@@ -5,17 +5,31 @@ from typing import Dict, List, Optional
 from loguru import logger
 from app.config import settings
 import json
+import pymysql
+
+# Use PyMySQL instead of MySQLdb (pure Python, no system library needed)
+pymysql.install_as_MySQLdb()
 
 
 class DatabaseClient:
     """MySQL database client for saving processed documents"""
     
     def __init__(self):
+        # Ensure DATABASE_URL uses pymysql driver
+        db_url = settings.DATABASE_URL
+        if db_url.startswith('mysql://'):
+            # Replace mysql:// with mysql+pymysql://
+            db_url = db_url.replace('mysql://', 'mysql+pymysql://', 1)
+        elif not db_url.startswith('mysql+pymysql://'):
+            # If already has driver, ensure it's pymysql
+            db_url = db_url.replace('mysql+mysqldb://', 'mysql+pymysql://', 1)
+        
         self.engine = create_engine(
-            settings.DATABASE_URL,
+            db_url,
             pool_size=settings.DATABASE_POOL_SIZE,
             max_overflow=settings.DATABASE_MAX_OVERFLOW,
             pool_pre_ping=True,
+            echo=False,  # Set to True for SQL debugging
         )
         self.SessionLocal = sessionmaker(bind=self.engine)
     
