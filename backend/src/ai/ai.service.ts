@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +7,7 @@ import { ActionType } from '@prisma/client';
 
 @Injectable()
 export class AiService {
+  private readonly logger = new Logger(AiService.name);
   private openai: OpenAI;
 
   constructor(
