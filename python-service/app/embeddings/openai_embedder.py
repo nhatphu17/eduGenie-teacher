@@ -27,21 +27,18 @@ class OpenAIEmbedder:
             List of floats (embedding vector)
         """
         try:
-            # text-embedding-3-large supports dimensions parameter
-            # But check if model supports it first
-            params = {
-                'model': self.model,
-                'input': text,
-            }
+            # Note: dimensions parameter is only supported in newer OpenAI API versions
+            # For text-embedding-3-large, default dimensions is 3072
+            # We'll use the default dimensions and not pass it explicitly
+            # to avoid compatibility issues with older client versions
             
-            # Only add dimensions if model supports it (text-embedding-3-*)
-            if 'text-embedding-3' in self.model:
-                params['dimensions'] = self.dimensions
-            
-            response = self.client.embeddings.create(**params)
+            response = self.client.embeddings.create(
+                model=self.model,
+                input=text,
+            )
             
             embedding = response.data[0].embedding
-            logger.debug(f"Generated embedding: {len(embedding)} dimensions")
+            logger.debug(f"Generated embedding: {len(embedding)} dimensions (model: {self.model})")
             
             return embedding
             
@@ -60,20 +57,18 @@ class OpenAIEmbedder:
             List of embedding vectors
         """
         try:
-            # OpenAI supports batch embedding
-            params = {
-                'model': self.model,
-                'input': texts,
-            }
+            # Note: dimensions parameter is only supported in newer OpenAI API versions
+            # For text-embedding-3-large, default dimensions is 3072
+            # We'll use the default dimensions and not pass it explicitly
+            # to avoid compatibility issues with older client versions
             
-            # Only add dimensions if model supports it (text-embedding-3-*)
-            if 'text-embedding-3' in self.model:
-                params['dimensions'] = self.dimensions
-            
-            response = self.client.embeddings.create(**params)
+            response = self.client.embeddings.create(
+                model=self.model,
+                input=texts,
+            )
             
             embeddings = [item.embedding for item in response.data]
-            logger.info(f"Generated {len(embeddings)} embeddings in batch")
+            logger.info(f"Generated {len(embeddings)} embeddings in batch (model: {self.model}, dimensions: {len(embeddings[0]) if embeddings else 0})")
             
             return embeddings
             
