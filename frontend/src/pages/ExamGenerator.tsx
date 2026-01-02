@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -16,6 +16,15 @@ export default function ExamGenerator() {
     questionTypes: ['MCQ' as const],
     title: '',
     description: '',
+  });
+
+  // Fetch subjects from backend
+  const { data: subjects, isLoading: subjectsLoading } = useQuery({
+    queryKey: ['subjects'],
+    queryFn: async () => {
+      const res = await axios.get(`${API_URL}/subjects`);
+      return res.data;
+    },
   });
 
   const { mutate: generateExam, isPending } = useMutation({
@@ -46,14 +55,25 @@ export default function ExamGenerator() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Môn học</label>
-              <input
-                type="text"
-                value={formData.subjectId}
-                onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
-                className="input"
-                placeholder="Nhập ID môn học"
-                required
-              />
+              {subjectsLoading ? (
+                <p className="text-gray-500">Đang tải...</p>
+              ) : (
+                <select
+                  value={formData.subjectId}
+                  onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
+                  className="input"
+                  required
+                >
+                  <option value="">Chọn môn học</option>
+                  {subjects
+                    ?.filter((s: any) => s.grade === formData.grade)
+                    .map((subject: any) => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.name}
+                      </option>
+                    ))}
+                </select>
+              )}
             </div>
 
             <div>
