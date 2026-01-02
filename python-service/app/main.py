@@ -9,8 +9,14 @@ import aiofiles
 from app.config import settings
 from app.services.document_processor import DocumentProcessor
 
-# Configure logging
-logger.add("logs/app.log", rotation="10 MB", level=settings.LOG_LEVEL)
+# Configure logging - also output to console
+import sys
+logger.remove()  # Remove default handler
+logger.add(sys.stderr, level=settings.LOG_LEVEL, colorize=True, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>")
+logger.add("logs/app.log", rotation="10 MB", level=settings.LOG_LEVEL, format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}")
+
+# Create logs directory if it doesn't exist
+os.makedirs("logs", exist_ok=True)
 
 app = FastAPI(
     title="EduGenie Document Processing Service",

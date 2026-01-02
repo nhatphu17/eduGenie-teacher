@@ -146,6 +146,8 @@ export class AiService {
 
     // If we have chunks, use them (preferred method)
     if (chunks.length > 0) {
+      this.logger.log(`🔍 Calculating similarity for ${chunks.length} chunks...`);
+      
       const scoredChunks = chunks
         .map((chunk) => {
           if (!chunk.embedding || typeof chunk.embedding !== 'object') {
@@ -158,12 +160,44 @@ export class AiService {
             similarity,
           };
         })
-        .filter((item) => item !== null && item.similarity > 0.5) // Lower threshold from 0.7 to 0.5
+        .filter((item) => item !== null);
+      
+      // Log similarity scores for debugging
+      if (scoredChunks.length > 0) {
+        const scores = scoredChunks.map(item => item.similarity).sort((a, b) => b - a);
+        this.logger.log(`📊 Similarity scores: max=${scores[0].toFixed(3)}, min=${scores[scores.length - 1].toFixed(3)}, avg=${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(3)}`);
+        this.logger.log(`📊 Top 5 similarities: ${scores.slice(0, 5).map(s => s.toFixed(3)).join(', ')}`);
+      }
+      
+      // Lower threshold significantly (0.3) to ensure we get results
+      const threshold = 0.3;
+      const filteredChunks = scoredChunks
+        .filter((item) => item.similarity > threshold)
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit);
-
-      // Return in format compatible with existing code
-      return scoredChunks.map((item) => ({
+      
+      this.logger.log(`📊 Chunks above threshold ${threshold}: ${filteredChunks.length}/${scoredChunks.length}`);
+      
+      if (filteredChunks.length === 0 && scoredChunks.length > 0) {
+        // If no chunks above threshold, return top chunks anyway (with warning)
+        this.logger.warn(`⚠️ No chunks above threshold ${threshold}, returning top ${limit} chunks anyway`);
+        const topChunks = scoredChunks
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, limit);
+        return topChunks.map((item) => ({
+          id: item.chunk.id,
+          content: item.chunk.content,
+          type: item.chunk.document.type,
+          originalFileName: item.chunk.document.originalFileName || 'Unknown',
+          chunkIndex: item.chunk.chunkIndex,
+          chapterNumber: item.chunk.chapterNumber,
+          chapterTitle: item.chunk.chapterTitle,
+          pageStart: item.chunk.pageStart,
+          pageEnd: item.chunk.pageEnd,
+        }));
+      }
+      
+      return filteredChunks.map((item) => ({
         id: item.chunk.id,
         content: item.chunk.content,
         type: item.chunk.document.type,
