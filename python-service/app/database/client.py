@@ -70,66 +70,110 @@ class DatabaseClient:
         logger.info(f"📊 [DB] Total chunks to save: {len(chunks)}")
         logger.info(f"📋 [DB] Subject ID: {subject_id}, Document Type: {document_type}")
         
+        if not chunks or len(chunks) == 0:
+            logger.warning(f"⚠️ [DB] No chunks to save for document {document_id}")
+            self._update_document_status(document_id, 'FAILED', error='No chunks generated')
+            return 0
+        
+        # Test database connection first
+        try:
+            test_session = self.SessionLocal()
+            test_query = text("SELECT 1 as test")
+            test_session.execute(test_query)
+            test_session.close()
+            logger.info(f"✅ [DB] Database connection test successful")
+        except Exception as conn_error:
+            logger.error(f"❌ [DB] Database connection failed: {conn_error}")
+            self._update_document_status(document_id, 'FAILED', error=f'Database connection failed: {str(conn_error)}')
+            raise
+        
         session = self.SessionLocal()
         saved_count = 0
         
         try:
+            logger.info(f"🔄 [DB] Starting to insert {len(chunks)} chunks...")
             for idx, chunk in enumerate(chunks):
+                if idx == 0:
+                    logger.info(f"📝 [DB] Sample chunk data: content_length={len(chunk.get('content', ''))}, has_embedding={chunk.get('embedding') is not None}")
+                    logger.info(f"📝 [DB] Sample chunk keys: {list(chunk.keys())}")
                 # Prepare embedding JSON
-                embedding_json = json.dumps(chunk.get('embedding', []))
+                embedding = chunk.get('embedding', [])
+                if not embedding:
+                    logger.warning(f"⚠️ [DB] Chunk {idx} has no embedding, skipping...")
+                    continue
+                
+                embedding_json = json.dumps(embedding)
+                
+                # Validate required fields
+                if not chunk.get('content'):
+                    logger.warning(f"⚠️ [DB] Chunk {idx} has no content, skipping...")
+                    continue
                 
                 # Insert chunk into database
-                # Note: Adjust table/column names to match your Prisma schema
-                query = text("""
-                    INSERT INTO chunks (
-                        id,
-                        documentId,
-                        chapterNumber,
-                        chapterTitle,
-                        pageStart,
-                        pageEnd,
-                        content,
-                        contentLength,
-                        tokenCount,
-                        embedding,
-                        embeddingModel,
-                        chunkIndex,
-                        chunkType,
-                        createdAt,
-                        updatedAt
-                    ) VALUES (
-                        UUID(),
-                        :document_id,
-                        :chapter_number,
-                        :chapter_title,
-                        :page_start,
-                        :page_end,
-                        :content,
-                        :content_length,
-                        :token_count,
-                        :embedding,
-                        :embedding_model,
-                        :chunk_index,
-                        :chunk_type,
-                        NOW(),
-                        NOW()
-                    )
-                """)
-                
-                session.execute(query, {
-                    'document_id': document_id,
-                    'chapter_number': chunk.get('chapter_number'),
-                    'chapter_title': chunk.get('chapter_title', ''),
-                    'page_start': chunk.get('page_start'),
-                    'page_end': chunk.get('page_end'),
-                    'content': chunk.get('content', ''),
-                    'content_length': chunk.get('content_length', 0),
-                    'token_count': chunk.get('token_count'),
-                    'embedding': embedding_json,
-                    'embedding_model': 'text-embedding-3-large',
-                    'chunk_index': chunk.get('chunk_index', idx),
-                    'chunk_type': 'TEXT',
-                })
+                # Note: Prisma uses camelCase, but MySQL might use different naming
+                # Check actual column names in database
+                try:
+                    # Try with camelCase first (Prisma default)
+                    query = text("""
+                        INSERT INTO chunks (
+                            id,
+                            documentId,
+                            chapterNumber,
+                            chapterTitle,
+                            pageStart,
+                            pageEnd,
+                            content,
+                            contentLength,
+                            tokenCount,
+                            embedding,
+                            embeddingModel,
+                            chunkIndex,
+                            chunkType,
+                            createdAt,
+                            updatedAt
+                        ) VALUES (
+                            UUID(),
+                            :document_id,
+                            :chapter_number,
+                            :chapter_title,
+                            :page_start,
+                            :page_end,
+                            :content,
+                            :content_length,
+                            :token_count,
+                            :embedding,
+                            :embedding_model,
+                            :chunk_index,
+                            :chunk_type,
+                            NOW(),
+                            NOW()
+                        )
+                    """)
+                    
+                    params = {
+                        'document_id': document_id,
+                        'chapter_number': chunk.get('chapter_number'),
+                        'chapter_title': chunk.get('chapter_title', ''),
+                        'page_start': chunk.get('page_start'),
+                        'page_end': chunk.get('page_end'),
+                        'content': chunk.get('content', ''),
+                        'content_length': chunk.get('content_length', len(chunk.get('content', ''))),
+                        'token_count': chunk.get('token_count'),
+                        'embedding': embedding_json,
+                        'embedding_model': 'text-embedding-3-large',
+                        'chunk_index': chunk.get('chunk_index', idx),
+                        'chunk_type': 'TEXT',
+                    }
+                    
+                    session.execute(query, params)
+                    
+                    if idx == 0:
+                        logger.info(f"✅ [DB] First chunk inserted successfully")
+                    
+                except Exception as insert_error:
+                    logger.error(f"❌ [DB] Error inserting chunk {idx}: {insert_error}")
+                    logger.error(f"❌ [DB] Chunk data: content_length={len(chunk.get('content', ''))}, embedding_length={len(embedding)}")
+                    raise  # Re-raise to trigger rollback
                 
                 saved_count += 1
                 if saved_count % 10 == 0:
@@ -146,7 +190,9 @@ class DatabaseClient:
             
         except Exception as e:
             session.rollback()
-            logger.error(f"Error saving chunks: {e}")
+            logger.error(f"❌ [DB] Error saving chunks: {e}")
+            logger.error(f"❌ [DB] Error type: {type(e).__name__}")
+            logger.exception(e)  # Full stack trace
             self._update_document_status(document_id, 'FAILED', error=str(e))
             raise
         

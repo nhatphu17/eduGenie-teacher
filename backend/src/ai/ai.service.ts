@@ -95,15 +95,53 @@ export class AiService {
       this.logger.log(`Sample chunk: documentId=${chunks[0].document.id}, hasEmbedding=${chunks[0].embedding !== null}`);
       this.logger.log(`Chunk document status: ${chunks[0].document.status}`);
     } else {
-      // Check if documents exist but no chunks
-      const docs = await this.prisma.document.findMany({
-        where: { subjectId, status: 'COMPLETED' },
-        select: { id: true, originalFileName: true, status: true },
+      // Check ALL documents (not just COMPLETED) to see what's happening
+      const allDocs = await this.prisma.document.findMany({
+        where: { subjectId },
+        select: { 
+          id: true, 
+          originalFileName: true, 
+          status: true,
+          processedAt: true,
+          errorMessage: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
       });
-      this.logger.warn(`⚠️ No chunks found, but found ${docs.length} COMPLETED documents for subjectId=${subjectId}`);
-      docs.forEach((doc) => {
-        this.logger.warn(`  - Document: ${doc.id}, File: ${doc.originalFileName}, Status: ${doc.status}`);
-      });
+      
+      const completedDocs = allDocs.filter(d => d.status === 'COMPLETED');
+      const pendingDocs = allDocs.filter(d => d.status === 'PENDING');
+      const processingDocs = allDocs.filter(d => d.status === 'PROCESSING');
+      const failedDocs = allDocs.filter(d => d.status === 'FAILED');
+      
+      this.logger.warn(`⚠️ No chunks found for subjectId=${subjectId}`);
+      this.logger.warn(`📊 Document status summary:`);
+      this.logger.warn(`  - Total documents: ${allDocs.length}`);
+      this.logger.warn(`  - COMPLETED: ${completedDocs.length}`);
+      this.logger.warn(`  - PENDING: ${pendingDocs.length}`);
+      this.logger.warn(`  - PROCESSING: ${processingDocs.length}`);
+      this.logger.warn(`  - FAILED: ${failedDocs.length}`);
+      
+      if (allDocs.length === 0) {
+        this.logger.error(`❌ No documents found for subjectId=${subjectId}. Please upload documents first.`);
+      } else {
+        this.logger.warn(`📄 All documents for subjectId=${subjectId}:`);
+        allDocs.forEach((doc) => {
+          const age = Math.floor((Date.now() - doc.createdAt.getTime()) / 1000 / 60); // minutes ago
+          this.logger.warn(
+            `  - ${doc.status}: ${doc.originalFileName || 'Unknown'} ` +
+            `(ID: ${doc.id}, ${age}m ago${doc.errorMessage ? `, Error: ${doc.errorMessage}` : ''})`
+          );
+        });
+        
+        if (processingDocs.length > 0) {
+          this.logger.warn(`⏳ ${processingDocs.length} document(s) still processing. Please wait...`);
+        }
+        
+        if (failedDocs.length > 0) {
+          this.logger.error(`❌ ${failedDocs.length} document(s) failed. Check error messages above.`);
+        }
+      }
     }
 
     // If we have chunks, use them (preferred method)

@@ -454,11 +454,23 @@ export class DocumentsService {
     grade?: number,
     limit: number = 10,
   ) {
-    this.logger.log(`Searching documents: query="${query}", subjectId=${subjectId}, grade=${grade}, limit=${limit}`);
+    this.logger.log(`🔍 Searching documents: query="${query}", subjectId=${subjectId}, grade=${grade}, limit=${limit}`);
+    
+    // First, check if we have any documents for this subject
+    const docCount = await this.prisma.document.count({
+      where: { subjectId },
+    });
+    
+    if (docCount === 0) {
+      this.logger.warn(`⚠️ No documents found for subjectId=${subjectId}. Please upload documents first.`);
+      return [];
+    }
+    
+    this.logger.log(`📊 Found ${docCount} document(s) for subjectId=${subjectId}`);
     
     // Generate embedding for query
     const queryEmbedding = await this.aiService.generateEmbedding(query);
-    this.logger.log(`Generated query embedding: ${queryEmbedding.length} dimensions`);
+    this.logger.log(`✅ Generated query embedding: ${queryEmbedding.length} dimensions`);
 
     // Retrieve relevant chunks
     const relevantChunks = await this.aiService.retrieveRelevantChunks(
@@ -468,7 +480,7 @@ export class DocumentsService {
       limit,
     );
 
-    this.logger.log(`Found ${relevantChunks.length} relevant chunks`);
+    this.logger.log(`📊 Found ${relevantChunks.length} relevant chunks after similarity search`);
 
     return relevantChunks.map((doc) => ({
       id: doc.id,

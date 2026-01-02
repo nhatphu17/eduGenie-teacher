@@ -135,7 +135,16 @@ async def _process_document_task(
         logger.info(f"✅ [BACKGROUND TASK] Successfully completed: {result}")
     except Exception as e:
         logger.error(f"❌ [BACKGROUND TASK] Processing failed for document {document_id}: {e}")
+        logger.error(f"❌ [BACKGROUND TASK] Error type: {type(e).__name__}")
         logger.exception(e)  # Full stack trace
+        
+        # Try to update document status to FAILED
+        try:
+            from app.database.client import DatabaseClient
+            db = DatabaseClient()
+            db._update_document_status(document_id, 'FAILED', error=str(e))
+        except Exception as update_error:
+            logger.error(f"❌ [BACKGROUND TASK] Failed to update document status: {update_error}")
     finally:
         # Clean up temp file
         if os.path.exists(file_path):
