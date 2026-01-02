@@ -66,6 +66,10 @@ class DatabaseClient:
         Returns:
             Number of chunks saved
         """
+        logger.info(f"💾 [DB] Starting save_chunks for document {document_id}")
+        logger.info(f"📊 [DB] Total chunks to save: {len(chunks)}")
+        logger.info(f"📋 [DB] Subject ID: {subject_id}, Document Type: {document_type}")
+        
         session = self.SessionLocal()
         saved_count = 0
         
@@ -128,9 +132,12 @@ class DatabaseClient:
                 })
                 
                 saved_count += 1
+                if saved_count % 10 == 0:
+                    logger.info(f"💾 [DB] Saved {saved_count}/{len(chunks)} chunks...")
             
             session.commit()
-            logger.info(f"Saved {saved_count} chunks for document {document_id}")
+            logger.info(f"✅ [DB] Successfully saved {saved_count} chunks for document {document_id}")
+            logger.info(f"📊 [DB] Chunks saved: {saved_count}/{len(chunks)}")
             
             # Update document status
             self._update_document_status(document_id, 'COMPLETED', saved_count)
@@ -154,6 +161,12 @@ class DatabaseClient:
         error: Optional[str] = None,
     ):
         """Update document processing status"""
+        logger.info(f"🔄 [DB] Updating document {document_id} status to {status}")
+        if error:
+            logger.error(f"❌ [DB] Error message: {error}")
+        if chunks_count:
+            logger.info(f"📊 [DB] Chunks count: {chunks_count}")
+        
         session = self.SessionLocal()
         
         try:

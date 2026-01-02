@@ -87,6 +87,24 @@ export class AiService {
       take: 100, // Get more for similarity calculation
     });
 
+    this.logger.log(`Found ${chunks.length} chunks for subjectId=${subjectId}, status=COMPLETED`);
+    
+    // Debug: Log chunk details
+    if (chunks.length > 0) {
+      this.logger.log(`Sample chunk: documentId=${chunks[0].document.id}, hasEmbedding=${chunks[0].embedding !== null}`);
+      this.logger.log(`Chunk document status: ${chunks[0].document.status}`);
+    } else {
+      // Check if documents exist but no chunks
+      const docs = await this.prisma.document.findMany({
+        where: { subjectId, status: 'COMPLETED' },
+        select: { id: true, originalFileName: true, status: true },
+      });
+      this.logger.warn(`⚠️ No chunks found, but found ${docs.length} COMPLETED documents for subjectId=${subjectId}`);
+      docs.forEach((doc) => {
+        this.logger.warn(`  - Document: ${doc.id}, File: ${doc.originalFileName}, Status: ${doc.status}`);
+      });
+    }
+
     // If we have chunks, use them (preferred method)
     if (chunks.length > 0) {
       const scoredChunks = chunks

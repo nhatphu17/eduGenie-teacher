@@ -82,11 +82,15 @@ async def process_document(
         await f.write(file_content)
     
     logger.info(
-        f"Received file: {file.filename}, size: {len(file_content)} bytes, "
-        f"document_id: {document_id}, subject_id: {subject_id}"
+        f"📥 [API] Received file: {file.filename}, size: {len(file_content)} bytes"
     )
+    logger.info(
+        f"📋 [API] Document ID: {document_id}, Subject ID: {subject_id}, Type: {document_type}"
+    )
+    logger.info(f"💾 [API] Saved temp file: {temp_file_path}")
     
     # Process in background
+    logger.info(f"🔄 [API] Queuing background task for document {document_id}")
     background_tasks.add_task(
         _process_document_task,
         temp_file_path,
@@ -96,6 +100,8 @@ async def process_document(
         user_id,
         original_filename or file.filename,
     )
+    
+    logger.info(f"✅ [API] Document {document_id} queued successfully")
     
     return {
         "status": "queued",
@@ -113,8 +119,12 @@ async def _process_document_task(
     original_filename: str,
 ):
     """Background task for processing document"""
+    logger.info(f"🚀 [BACKGROUND TASK] Starting processing for document {document_id}")
+    logger.info(f"📄 File: {original_filename}, Path: {file_path}")
+    logger.info(f"📋 Subject ID: {subject_id}, Type: {document_type}, User: {user_id}")
+    
     try:
-        await processor.process_document(
+        result = await processor.process_document(
             file_path=file_path,
             document_id=document_id,
             subject_id=subject_id,
@@ -122,13 +132,15 @@ async def _process_document_task(
             user_id=user_id,
             original_filename=original_filename,
         )
+        logger.info(f"✅ [BACKGROUND TASK] Successfully completed: {result}")
     except Exception as e:
-        logger.error(f"Background processing failed: {e}")
+        logger.error(f"❌ [BACKGROUND TASK] Processing failed for document {document_id}: {e}")
+        logger.exception(e)  # Full stack trace
     finally:
         # Clean up temp file
         if os.path.exists(file_path):
             os.remove(file_path)
-            logger.info(f"Cleaned up temp file: {file_path}")
+            logger.info(f"🧹 [BACKGROUND TASK] Cleaned up temp file: {file_path}")
 
 
 @app.post("/api/v1/process-sync")
