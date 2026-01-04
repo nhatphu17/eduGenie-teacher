@@ -154,7 +154,12 @@ export class DocumentsService {
     const fileBuffer = file.buffer;
 
     try {
-      if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      if (file.mimetype === 'application/pdf') {
+        // PDF requires Python service - cannot process locally
+        throw new BadRequestException(
+          'PDF files require the Python service to be running. Please ensure the Python service is started and try again.',
+        );
+      } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         textContent = await this.extractTextFromWord(fileBuffer);
       } else if (
         file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
@@ -164,7 +169,16 @@ export class DocumentsService {
       } else if (file.mimetype === 'text/plain') {
         textContent = fileBuffer.toString('utf-8');
       } else {
-        throw new BadRequestException('Unsupported file type. Please upload Word, Excel, or text files.');
+        // Check by file extension as fallback
+        const fileExtension = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
+        if (fileExtension === '.pdf') {
+          throw new BadRequestException(
+            'PDF files require the Python service to be running. Please ensure the Python service is started and try again.',
+          );
+        }
+        throw new BadRequestException(
+          `Unsupported file type: ${fileExtension || file.mimetype}. Please upload PDF, Word, Excel, or text files.`,
+        );
       }
     } finally {
       (file as any).buffer = null;
