@@ -177,13 +177,23 @@ LƯU Ý QUAN TRỌNG:
     }
 
     const createdQuestions = [];
+    let skippedCount = 0;
+    
+    console.log(`📝 Starting to create ${examData.questions.length} questions...`);
+    
     for (const questionData of examData.questions) {
       try {
-        console.log(`📝 Creating question:`, questionData);
+        console.log(`📝 Creating question ${createdQuestions.length + 1}/${examData.questions.length}:`, {
+          order: questionData.order,
+          type: questionData.type,
+          difficulty: questionData.difficulty,
+          contentLength: questionData.content?.length || 0,
+        });
         
         // Validate required fields
         if (!questionData.content) {
           console.warn(`⚠️ Skipping question with no content:`, questionData);
+          skippedCount++;
           continue;
         }
 
@@ -219,6 +229,7 @@ LƯU Ý QUAN TRỌNG:
       } catch (error) {
         console.error(`❌ Error creating question:`, error);
         console.error(`❌ Question data:`, questionData);
+        skippedCount++;
         // Continue with other questions
       }
     }
