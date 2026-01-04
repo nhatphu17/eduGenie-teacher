@@ -127,10 +127,15 @@ class SmartChunker:
             estimated_start = start_page + (chunk_start_char // chars_per_page)
             estimated_end = start_page + (chunk_end_char // chars_per_page)
             
+            # Truncate chapter title to max 255 chars (MySQL VARCHAR limit)
+            chapter_title = chapter.get('title', '') or ''
+            if len(chapter_title) > 255:
+                chapter_title = chapter_title[:252] + '...'
+            
             chunk_data = {
                 'content': chunk_text,
                 'chapter_number': chapter.get('number'),
-                'chapter_title': chapter.get('title', ''),
+                'chapter_title': chapter_title,  # Use truncated version
                 'page_start': max(estimated_start, chapter.get('start_page', 1)),
                 'page_end': min(estimated_end, chapter.get('end_page', 1)),
                 'chunk_index': idx,

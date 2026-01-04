@@ -109,6 +109,12 @@ class DatabaseClient:
                     logger.warning(f"⚠️ [DB] Chunk {idx} has no content, skipping...")
                     continue
                 
+                # Truncate chapter_title if too long (MySQL VARCHAR limit is typically 255)
+                chapter_title = chunk.get('chapter_title', '') or ''
+                if len(chapter_title) > 255:
+                    logger.warning(f"⚠️ [DB] Truncating chapter_title from {len(chapter_title)} to 255 chars")
+                    chapter_title = chapter_title[:252] + '...'  # Leave room for ellipsis
+                
                 # Insert chunk into database
                 # Note: Prisma uses camelCase, but MySQL might use different naming
                 # Check actual column names in database
@@ -153,7 +159,7 @@ class DatabaseClient:
                     params = {
                         'document_id': document_id,
                         'chapter_number': chunk.get('chapter_number'),
-                        'chapter_title': chunk.get('chapter_title', ''),
+                        'chapter_title': chapter_title,  # Use truncated version
                         'page_start': chunk.get('page_start'),
                         'page_end': chunk.get('page_end'),
                         'content': chunk.get('content', ''),
