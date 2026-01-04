@@ -124,3 +124,4 @@ git log --all --full-history -p | Select-String -Pattern "sk-proj-"
 
 **Sau khi xóa secret khỏi history, GitHub sẽ không còn chặn push!** ✅
 
+

@@ -81,11 +81,13 @@ HƯỚNG DẪN TẠO CÂU HỎI:
    - Giải thích
    - Điểm số (thường là 2-3 điểm)
 
-LƯU Ý:
-- Nếu tài liệu có đủ nội dung, hãy tạo đầy đủ ${totalQuestions} câu hỏi
-- Nếu tài liệu thiếu một số phần, hãy tạo câu hỏi dựa trên phần có sẵn
+LƯU Ý QUAN TRỌNG:
+- BẠN PHẢI TẠO ĐÚNG ${totalQuestions} CÂU HỎI (không được ít hơn)
+- Phân bố độ khó PHẢI chính xác: ${difficultyDistribution.NB} câu NB, ${difficultyDistribution.TH} câu TH, ${difficultyDistribution.VD} câu VD
+- Nếu tài liệu thiếu một số phần, hãy tạo câu hỏi dựa trên phần có sẵn và bổ sung bằng kiến thức chương trình lớp ${grade}
 - Đảm bảo câu hỏi phù hợp với độ khó yêu cầu (NB/TH/VD)
-- Tất cả câu hỏi phải bằng tiếng Việt`;
+- Tất cả câu hỏi phải bằng tiếng Việt
+- TRẢ VỀ ĐÚNG ${totalQuestions} CÂU HỎI TRONG MẢNG "questions"`;
 
     // 3. Define JSON schema for structured output
     const jsonSchema = `{
@@ -150,6 +152,12 @@ LƯU Ý:
     console.log(`📝 Exam data received:`, JSON.stringify(examData, null, 2));
     console.log(`📝 Questions array:`, examData.questions);
     console.log(`📝 Questions count:`, examData.questions?.length || 0);
+    console.log(`📝 Expected total questions: ${totalQuestions} (NB: ${difficultyDistribution.NB}, TH: ${difficultyDistribution.TH}, VD: ${difficultyDistribution.VD})`);
+    
+    // Validate questions count
+    if (examData.questions && examData.questions.length < totalQuestions) {
+      console.warn(`⚠️ AI only generated ${examData.questions.length} questions, expected ${totalQuestions}. This might be due to insufficient context or AI limitations.`);
+    }
     
     // Handle error response from AI
     if (examData.error) {
@@ -215,7 +223,11 @@ LƯU Ý:
       }
     }
 
-    console.log(`✅ Created ${createdQuestions.length} questions for exam ${exam.id}`);
+    console.log(`✅ Created ${createdQuestions.length} questions for exam ${exam.id} (skipped: ${skippedCount}, expected: ${totalQuestions})`);
+    
+    if (createdQuestions.length < totalQuestions) {
+      console.warn(`⚠️ Warning: Only ${createdQuestions.length}/${totalQuestions} questions were created. This might be due to AI limitations or validation failures.`);
+    }
 
     return {
       exam: await this.getExamById(exam.id),

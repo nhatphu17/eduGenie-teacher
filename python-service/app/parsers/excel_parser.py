@@ -61,3 +61,4 @@ class ExcelParser:
             logger.error(f"Error parsing Excel {file_path}: {e}")
             raise
 
+

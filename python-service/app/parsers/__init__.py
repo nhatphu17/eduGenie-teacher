@@ -5,3 +5,4 @@ from .excel_parser import ExcelParser
 
 __all__ = ['PDFParser', 'DOCXParser', 'ExcelParser']
 
+

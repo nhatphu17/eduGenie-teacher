@@ -77,3 +77,4 @@ Generated 10 embeddings in batch (model: text-embedding-3-large, dimensions: 307
 
 **Sau khi restart, test lại document upload!** 🎯
 
+

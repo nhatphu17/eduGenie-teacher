@@ -390,3 +390,4 @@ async searchDocuments(query: string, subjectId: string) {
 
 **Tóm lại:** Giải pháp hiện tại **TỐT và phù hợp**. Chỉ cần optimize chứ không cần thay đổi cơ bản.
 
+

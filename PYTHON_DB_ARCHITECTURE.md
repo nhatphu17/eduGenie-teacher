@@ -235,3 +235,4 @@ class DatabaseClient:
 
 **Tóm lại: Giữ nguyên INSERT trực tiếp, nhưng cải thiện bằng Prisma Python!** 🎯
 
+

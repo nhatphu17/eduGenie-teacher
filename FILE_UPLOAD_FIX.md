@@ -127,3 +127,4 @@ AND d.status = 'COMPLETED';
 
 **Sau khi fix, upload lại document và check logs!** 🎯
 
+

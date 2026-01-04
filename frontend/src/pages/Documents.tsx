@@ -118,11 +118,11 @@ export default function Documents() {
     }
 
     // Check file sizes
-    const maxSize = 3 * 1024 * 1024; // 3MB
+    const maxSize = 10 * 1024 * 1024; // 10MB (matching backend limit)
     const oversizedFiles = files.filter((f) => f.size > maxSize);
     if (oversizedFiles.length > 0) {
       alert(
-        `Có ${oversizedFiles.length} file quá lớn (>3MB): ${oversizedFiles.map((f) => f.name).join(', ')}`,
+        `Có ${oversizedFiles.length} file quá lớn (>10MB): ${oversizedFiles.map((f) => f.name).join(', ')}`,
       );
       return;
     }
@@ -248,18 +248,18 @@ export default function Documents() {
                 chọn nhiều file
               </button>
             </p>
-            <p className="text-sm text-gray-500">Word, Excel, hoặc Text files (tối đa 3MB/file)</p>
+            <p className="text-sm text-gray-500">PDF, Word, Excel, hoặc Text files (tối đa 10MB/file)</p>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".doc,.docx,.xls,.xlsx,.txt"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.txt"
               onChange={handleFileSelect}
               className="hidden"
             />
             <input
               ref={folderInputRef}
               type="file"
-              accept=".doc,.docx,.xls,.xlsx,.txt"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.txt"
               multiple
               onChange={handleFileSelect}
               className="hidden"

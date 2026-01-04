@@ -166,3 +166,4 @@ console.log(`Found ${chunks.length} chunks for subject ${subjectId}`);
 
 **Sau khi fix embedding errors, upload lại document và test!** 🎯
 
+

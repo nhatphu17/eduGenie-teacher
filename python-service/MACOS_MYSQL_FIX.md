@@ -71,3 +71,4 @@ pip install mysqlclient
 
 **Nhưng PyMySQL đơn giản hơn và đủ dùng!** ✅
 
+

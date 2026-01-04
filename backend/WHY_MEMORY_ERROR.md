@@ -61,3 +61,4 @@ Thay vì xử lý tất cả trong request:
 Lỗi hết bộ nhớ không phải do upload file, mà do **xử lý embeddings ngay trong request**. Giải pháp là **tách xử lý ra background job**.
 
 
+

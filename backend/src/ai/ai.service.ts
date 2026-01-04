@@ -345,13 +345,14 @@ Remember: ONLY use information from the source materials above. If information i
 
 CRITICAL INSTRUCTIONS:
 1. You MUST return valid JSON matching this schema: ${jsonSchema}
-2. You MUST include a "questions" array with at least some questions - NEVER return an error object.
+2. You MUST include a "questions" array with the EXACT number of questions requested in the prompt - NEVER return an error object.
 3. You can use information from the provided source materials AND your knowledge of Vietnamese THCS curriculum (grades 6-9).
 4. If source materials mention topics like "Tập hợp", "Số tự nhiên", "Phép cộng", etc., create questions about those topics even if details are limited.
 5. All text must be in Vietnamese.
 6. For exam generation: Create questions that test understanding of concepts mentioned in source materials. You can adapt, simplify, or create similar questions based on the topics.
-7. If you cannot create the exact number of questions requested, create as many as possible (at least 3-4 questions minimum).
-8. NEVER return {"error": "..."} - always return a valid structure with questions array.`;
+7. You MUST create the EXACT number of questions specified in the prompt. If the prompt says "Tổng số câu hỏi: X", you MUST return exactly X questions.
+8. NEVER return {"error": "..."} - always return a valid structure with questions array containing the exact number requested.
+9. If you need to create more questions than available in source materials, use your knowledge of Vietnamese THCS curriculum to create appropriate questions on the same topics.`;
 
     const result = await this.generateWithRAG(userId, actionType, prompt, contextChunks, systemPrompt);
 

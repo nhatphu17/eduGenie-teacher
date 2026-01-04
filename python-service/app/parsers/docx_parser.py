@@ -126,3 +126,4 @@ class DOCXParser:
         except ValueError:
             return None
 
+
